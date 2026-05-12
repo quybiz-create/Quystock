@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,orientation=landscape">
 <title>QuyStock Pro</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -456,6 +456,31 @@ body::before {
   .ohlc     { gap:6px; }
   .ohlc-val { font-size:10px; }
 }
+/* FIT MOBILE SCREEN */
+html { touch-action: manipulation; }
+@media (max-width: 480px) {
+  .layout { height:calc(100vh - 88px); }
+  .sidebar { width:110px; min-width:110px; }
+  .content { min-width:0; overflow:hidden; }
+  .tab-bar { padding:0 4px; gap:0; }
+  .tab-btn { font-size:8px; padding:5px 6px; }
+  .ctrl-btn { font-size:7px; padding:1px 4px; }
+  .scan-top-btn { font-size:8px; padding:2px 6px; }
+  .price-hdr { padding:4px 8px; gap:10px; }
+  .ph-price { font-size:16px; }
+  .ohlc { gap:6px; }
+  .ohlc-val { font-size:10px; }
+  .ohlc-lbl { font-size:7px; }
+  .ind-bar { padding:3px 8px; gap:8px; }
+  .ind-lbl { font-size:7px; }
+  .ind-val { font-size:9px; }
+  .main-row { height:280px; }
+  .rsi-row  { height:75px; }
+  .macd-row { height:75px; }
+  .mfi-row  { height:68px; }
+  .vol-row  { height:65px; }
+}
+
 </style>
 </head>
 <body>
