@@ -71,7 +71,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
 .ohlc-val{font-family:var(--mono);font-size:11px;}
 
 /* TABS + CONTROLS */
-.tab-bar{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;overflow-x:auto;}
+.tab-bar{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;overflow-x:auto;justify-content:flex-start;}
 .tab-bar::-webkit-scrollbar{height:0;}
 .tab-btn{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text3);font-family:var(--mono);font-size:10px;padding:7px 10px;cursor:pointer;letter-spacing:1px;white-space:nowrap;}
 .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
@@ -310,8 +310,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:1
         <button class="ctrl-btn active" onclick="setPeriod(120,this)">6T</button>
         <button class="ctrl-btn" onclick="setPeriod(250,this)">1N</button>
 </div>
-      <div class="ctrl-sep"></div>
-      <button class="scan-btn-top" onclick="openScanModal()">🔍 SCAN</button>
+	<div class="ctrl-sep"></div>
+	<button class="scan-btn-top" onclick="openScanModal()" style="flex-shrink:0;margin-left:auto;">🔍 SCAN</button>
+     
       </div>
       <div class="ctrl-sep"></div>
       <!-- Indicators toggle -->
@@ -504,7 +505,7 @@ if(sigData&&!sigData.error){
     sigEl.innerHTML=(isNew?'🔥 ':'')+'<span style="color:var(--red);font-weight:600;">'+sigData.signal+'</span> | SL: '+sigData.sl.toLocaleString()+' | T1: '+sigData.t1.toLocaleString()+' | T2: '+sigData.t2.toLocaleString()+' | T3: '+sigData.t3.toLocaleString();
   }
 }
-  updateSignalBar(sym);
+
   if(!fundCache[sym]){var fund=await fetchFund(sym),profile=await fetchProfile(sym);fundCache[sym]={fund:fund,profile:profile};}
   updateFund(sym);updateHeaderFund(sym);
   var sigR=await fetch(API+'/signal/'+sym);
