@@ -409,8 +409,8 @@ def scan_stocks():
                 signal_line = ema(macd, 9)
                 
                 # MACD cat len: hom nay MACD > Signal, hom qua MACD < Signal
-                #if macd[-1] <= signal_line[-1] or macd[-2] >= signal_line[-2]:
-                #   return None
+                if macd[-1] <= signal_line[-1]:
+    		   return None
                 
                 # Tinh % thay doi
                 pct = (last_close - prev_close) / prev_close * 100
