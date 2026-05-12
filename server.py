@@ -399,8 +399,8 @@ def scan_stocks():
                     return None
                 
                 # Dieu kien 2: MA20 dang doc len
-                if lma20_prev is None or lma20 <= lma20_prev:
-                    return None
+                #if lma20_prev is None or lma20 <= lma20_prev:
+                #   return None
                 
                 # Dieu kien 3: MACD cat len
                 e12 = ema(list(closes), 12)
