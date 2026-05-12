@@ -121,13 +121,14 @@ def ai_analyze():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
 @app.route('/api/signal/<symbol>')
 def get_signal(symbol):
     try:
         from vnstock.api.quote import Quote
         from datetime import datetime, timedelta
         import numpy as np
-        
+
         end = datetime.today().strftime('%Y-%m-%d')
         start = (datetime.today() - timedelta(days=365)).strftime('%Y-%m-%d')
         q = Quote(symbol=symbol, source='VCI')
@@ -140,7 +141,6 @@ def get_signal(symbol):
         l = df['low'].values.astype(float)
         o = df['open'].values.astype(float)
 
-        # EMA
         def ema(arr, n):
             k = 2/(n+1)
             out = [arr[0]]
@@ -148,14 +148,12 @@ def get_signal(symbol):
                 out.append(arr[i]*k + out[-1]*(1-k))
             return np.array(out)
 
-        # StDev
         def stdev(arr, n):
             out = [0]*n
             for i in range(n, len(arr)):
                 out.append(float(np.std(arr[i-n:i])))
             return np.array(out)
 
-        # Trade with Target logic
         n = 7
         ys1 = (o + h + l + c*9) / 4
         rk3 = ema(ys1, n)
@@ -166,22 +164,16 @@ def get_signal(symbol):
         up = ema(rk6, n)
         down = ema(up, n)
 
-        # Tín hiệu
-       # Tín hiệu dựa trên Pivot (Auto Buy/Sell)
         n_bars = 12
         hhv = max(h[-n_bars-1:-1])
         llv = min(l[-n_bars-1:-1])
-        
-        # Buy: gia vuot HHV (breakout len)
+
         buy = bool(h[-1] > hhv and h[-2] <= max(h[-n_bars-2:-2]))
-        # Sell: gia pha LLV (breakout xuong)
         sell = bool(l[-1] < llv and l[-2] >= min(l[-n_bars-2:-2]))
-        
-        # Xu huong hien tai
+
         in_long = up[-1] > down[-1]
         in_short = up[-1] < down[-1]
 
-        # Trailing Stop Loss
         no = 10
         res = [max(h[max(0,i-no):i+1]) for i in range(len(h))]
         sup = [min(l[max(0,i-no):i+1]) for i in range(len(l))]
@@ -195,7 +187,7 @@ def get_signal(symbol):
                 avd.append(-1)
             else:
                 avd.append(avd[-1])
-        
+
         tsl = []
         for i in range(len(c)):
             if avd[i] == 1:
@@ -207,7 +199,6 @@ def get_signal(symbol):
         last_tsl = float(tsl[-1])
         diff = abs(last_c - last_tsl)
 
-        # Targets
         if in_long:
             entry = last_c
             sl = last_tsl
@@ -237,9 +228,11 @@ def get_signal(symbol):
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
     print("="*50)
     print("  QuyStock Server dang chay...")
-    print("  Mo Chrome vao: http://localhost:5000")
+    print(f"  Port: {port}")
     print("="*50)
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
