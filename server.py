@@ -51,15 +51,13 @@ def get_fundamental(symbol):
                 return round(val/100, 4) if pct else val
             except: return None
         return jsonify({
-            'symbol':       symbol.upper(),
-            'pe':           getval('p_e'),
-            'pb':           getval('p_b'),
-            'eps':          getval('trailing_eps'),
-            'roe':          getval('roe',  pct=True),
-            'roa':          getval('roa',  pct=True),
+            'symbol': symbol.upper(),
+            'pe': getval('p_e'), 'pb': getval('p_b'),
+            'eps': getval('trailing_eps'),
+            'roe': getval('roe', pct=True), 'roa': getval('roa', pct=True),
             'gross_margin': getval('gross_profit_margin', pct=True),
-            'net_margin':   getval('net_profit_margin',   pct=True),
-            'debt_equity':  getval('debt_to_equity'),
+            'net_margin': getval('net_profit_margin', pct=True),
+            'debt_equity': getval('debt_to_equity'),
         })
     except Exception as e:
         traceback.print_exc()
@@ -75,11 +73,11 @@ def get_profile(symbol):
             return jsonify({'error': 'No info'}), 404
         row = ov.iloc[0]
         return jsonify({
-            'symbol':    symbol.upper(),
+            'symbol': symbol.upper(),
             'shortName': str(row.get('shortName', '')),
-            'exchange':  str(row.get('exchange',  '')),
-            'industry':  str(row.get('industryName', '')),
-            'website':   str(row.get('website',   '')),
+            'exchange': str(row.get('exchange', '')),
+            'industry': str(row.get('industryName', '')),
+            'website': str(row.get('website', '')),
         })
     except Exception as e:
         traceback.print_exc()
@@ -145,12 +143,12 @@ def get_signal(symbol):
 
         if in_long:
             signal = 'BUY' if buy else 'LONG'
-            t1 = round(last_c + diff,   2)
+            t1 = round(last_c + diff, 2)
             t2 = round(last_c + 2*diff, 2)
             t3 = round(last_c + 4*diff, 2)
         else:
             signal = 'SELL' if sell else 'SHORT'
-            t1 = round(last_c - diff,   2)
+            t1 = round(last_c - diff, 2)
             t2 = round(last_c - 2*diff, 2)
             t3 = round(last_c - 4*diff, 2)
 
@@ -159,6 +157,330 @@ def get_signal(symbol):
             'entry': round(last_c, 2), 'sl': round(last_tsl, 2),
             't1': t1, 't2': t2, 't3': t3,
             'in_long': bool(in_long), 'new_signal': bool(buy or sell)
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/vpa/<symbol>')
+def get_vpa(symbol):
+    try:
+        from vnstock.api.quote import Quote
+        import numpy as np
+
+        end   = datetime.today().strftime('%Y-%m-%d')
+        start = (datetime.today() - timedelta(days=400)).strftime('%Y-%m-%d')
+        df    = Quote(symbol=symbol, source='VCI').history(start=start, end=end, interval='1D')
+        if df is None or df.empty:
+            return jsonify({'error': 'No data'}), 404
+
+        o = df['open'].values.astype(float)
+        h = df['high'].values.astype(float)
+        l = df['low'].values.astype(float)
+        c = df['close'].values.astype(float)
+        v = df['volume'].values.astype(float)
+        n = len(c)
+
+        def ma(arr, p):
+            r = np.full(len(arr), np.nan)
+            for i in range(p-1, len(arr)):
+                r[i] = np.mean(arr[i-p+1:i+1])
+            return r
+
+        def linreg_val(arr, p):
+            """Linear regression value (last point of regression line)"""
+            r = np.full(len(arr), np.nan)
+            x = np.arange(p, dtype=float)
+            for i in range(p-1, len(arr)):
+                y = arr[i-p+1:i+1]
+                slope, intercept = np.polyfit(x, y, 1)
+                r[i] = slope * (p-1) + intercept
+            return r
+
+        def linreg_slope(arr, p):
+            r = np.full(len(arr), np.nan)
+            x = np.arange(p, dtype=float)
+            for i in range(p-1, len(arr)):
+                y = arr[i-p+1:i+1]
+                slope, _ = np.polyfit(x, y, 1)
+                r[i] = slope
+            return r
+
+        def ema_arr(arr, p):
+            k = 2/(p+1)
+            out = np.full(len(arr), np.nan)
+            out[p-1] = np.mean(arr[:p])
+            for i in range(p, len(arr)):
+                out[i] = arr[i]*k + out[i-1]*(1-k)
+            return out
+
+        def atr_arr(p=14):
+            tr = np.maximum(h[1:]-l[1:], np.maximum(abs(h[1:]-c[:-1]), abs(l[1:]-c[:-1])))
+            tr = np.concatenate([[h[0]-l[0]], tr])
+            return ma(tr, p)
+
+        # ── VPA Basic ──
+        vol_avg    = ma(v, 90)
+        avg_spread = ma(h - l, 90)
+        spread     = h - l
+        wide_range  = spread > (1.5 * avg_spread)
+        narrow_range = spread < (0.7 * avg_spread)
+        up_bar   = np.concatenate([[False], c[1:] > c[:-1]])
+        down_bar = np.concatenate([[False], c[1:] < c[:-1]])
+        up_close   = c >= (spread * 0.7 + l)
+        down_close = c <= (spread * 0.3 + l)
+        mid_close  = (c > (spread*0.3+l)) & (c < (spread*0.7+l))
+        above_close = c > (spread*0.5+l)
+        below_close = c < (spread*0.5+l)
+        high_volume = np.concatenate([[False,False], (v[2:]>v[1:-1])&(v[1:-1]>v[:-2])])
+        low_volume  = np.concatenate([[False,False], (v[2:]<v[1:-1])&(v[2:]<v[:-2])])
+        vb = (v > vol_avg) | np.concatenate([[False], v[1:] > v[:-1]])
+
+        # ── Trend (LinReg based like AFL) ──
+        j5 = ma(c, 5)
+        # Short term: LinReg(20) + EMA(5) — like AFL p1=20, p2=5
+        tl1 = linreg_val(j5, 20)   # Short trend line 1
+        tl2 = ema_arr(np.where(np.isnan(tl1), 0, tl1), 5)  # Short trend line 2
+        # Long term: LinReg(80) + EMA(20) — like AFL p3=80, p4=20
+        tl3 = linreg_val(j5, 80)   # Long trend line 1
+        tl4 = ema_arr(np.where(np.isnan(tl3), 0, tl3), 20)  # Long trend line 2
+
+        # Trend direction (slope based)
+        trend_short_slope = linreg_slope(j5, 3)
+        trend_med_slope   = linreg_slope(j5, 10)
+        trend_long_slope  = linreg_slope(j5, 40)
+
+        # Short/Long trend status
+        short_up = tl1 > tl2
+        long_up  = tl3 > tl4
+
+        # ── VPA Signals ──
+        def hhv(arr, p): return np.array([max(arr[max(0,i-p+1):i+1]) for i in range(len(arr))])
+        def llv(arr, p): return np.array([min(arr[max(0,i-p+1):i+1]) for i in range(len(arr))])
+
+        fresh_hi = c > hhv(h, 5)
+        fresh_lo = c < llv(l, 5)
+
+        up_thrust      = wide_range & down_close & (trend_short_slope > 0) & np.concatenate([[False], h[1:]>h[:-1]])
+        up_thrust_true = wide_range & down_close & long_up & np.concatenate([[False], h[1:]>h[:-1]])
+        strength_down  = np.concatenate([[False], (v[1:]>v[:-1]) & down_bar[:-1] & up_bar[1:] & (up_close[1:]|mid_close[1:]) & (trend_short_slope[1:]<0) & (trend_med_slope[1:]<0)])
+        strength_down1 = np.concatenate([[False], (trend_long_slope[1:]<0) & (v[1:]>vol_avg[1:]*1.5) & down_bar[:-1] & up_bar[1:] & (up_close[1:]|mid_close[1:]) & (trend_short_slope[1:]<0) & (trend_med_slope[1:]<0)])
+        no_demand  = up_bar & narrow_range & low_volume & below_close
+        no_supply  = down_bar & narrow_range & low_volume & below_close
+        stop_vol   = (l == llv(l, 5)) & (up_close|mid_close) & (v > 1.5*vol_avg) & (trend_long_slope < 0)
+        bull_bar   = vb & np.where(spread>0, (c-l)/spread>0.5, False) & up_bar
+        bear_bar   = vb & down_close & down_bar & (spread > avg_spread)
+        distribute = (v > 2*vol_avg) & down_close & up_bar & (trend_short_slope>0) & (trend_med_slope>0)
+        low_vol_test = (l == llv(l, 5)) & up_close & low_volume
+        effort_up   = np.concatenate([[False], (h[1:]>h[:-1])&(l[1:]>l[:-1])&(c[1:]>c[:-1])&np.where(spread[1:]>0,(c[1:]-l[1:])/spread[1:]>0.7,False)&(spread[1:]>avg_spread[1:])&(v[1:]>v[:-1])])
+        effort_down = np.concatenate([[False], (h[1:]<h[:-1])&(l[1:]<l[:-1])&(c[1:]<c[:-1])&np.where(spread[1:]>0,(c[1:]-l[1:])/spread[1:]<0.25,False)&(spread[1:]>avg_spread[1:])&(v[1:]>v[:-1])])
+
+        # ── Bar Colors ──
+        bar_colors = []
+        for i in range(n):
+            if up_thrust_true[i]:                    bar_colors.append('upthrust_true')
+            elif up_thrust[i]:                       bar_colors.append('upthrust')
+            elif distribute[i]:                      bar_colors.append('distribute')
+            elif low_vol_test[i]:                    bar_colors.append('test')
+            elif bull_bar[i]:                        bar_colors.append('bull')
+            elif bear_bar[i]:                        bar_colors.append('bear')
+            elif no_demand[i]:                       bar_colors.append('no_demand')
+            elif no_supply[i]:                       bar_colors.append('no_supply')
+            elif effort_up[i]:                       bar_colors.append('effort_up')
+            elif effort_down[i]:                     bar_colors.append('effort_down')
+            elif strength_down1[i] or strength_down[i]: bar_colors.append('strength')
+            elif stop_vol[i]:                        bar_colors.append('stop_vol')
+            elif up_bar[i]:                          bar_colors.append('up')
+            elif down_bar[i]:                        bar_colors.append('down')
+            else:                                    bar_colors.append('neutral')
+
+        # ── Supertrend ──
+        atr_p, atr_m = 5, 2.0
+        atr_v = atr_arr(atr_p)
+        cp    = (h + l) / 2
+        st_up   = np.full(n, np.nan)
+        st_down = np.full(n, np.nan)
+        phase   = 0
+        for i in range(atr_p+1, n):
+            bu = cp[i] + atr_m * atr_v[i]
+            bl = cp[i] - atr_m * atr_v[i]
+            if phase == 0:
+                st_up[i] = cp[i]; st_down[i] = cp[i]
+            if phase != 1 and not np.isnan(st_down[i-1]) and c[i] > st_down[i-1]:
+                phase = 1; st_up[i] = bl; st_up[i-1] = st_down[i-1]
+            if phase != -1 and not np.isnan(st_up[i-1]) and c[i] < st_up[i-1]:
+                phase = -1; st_down[i] = bu; st_down[i-1] = st_up[i-1]
+            if phase == 1 and not np.isnan(st_up[i-1]):
+                st_up[i] = bl if bl > st_up[i-1] else st_up[i-1]
+            if phase == -1 and not np.isnan(st_down[i-1]):
+                st_down[i] = bu if bu < st_down[i-1] else st_down[i-1]
+
+        # ── TWT Oscillator ──
+        def ema_s(arr, n):
+            k, out = 2/(n+1), [float(arr[0])]
+            for i in range(1, len(arr)):
+                out.append(float(arr[i])*k + out[-1]*(1-k))
+            return np.array(out)
+
+        def stdev_r(arr, n):
+            out = np.zeros(len(arr))
+            for i in range(n, len(arr)):
+                out[i] = float(np.std(arr[i-n:i]))
+            return out
+
+        twt_n = 7
+        ys1   = (o + h + l + c*9) / 4
+        rk3   = ema_s(ys1, twt_n)
+        rk4   = stdev_r(ys1, twt_n)
+        rk4   = np.where(rk4 == 0, 0.001, rk4)
+        rk5   = (ys1 - rk3) * 100 / rk4
+        rk6   = ema_s(rk5, twt_n)
+        twt_up   = ema_s(rk6, twt_n)
+        twt_down = ema_s(twt_up, twt_n)
+        twt_hist = twt_up - twt_down
+
+        # ── S/R Lines ──
+        sens = 6
+        peaks, troughs = [], []
+        for i in range(sens, n-sens):
+            if all(h[i] >= h[i-j] for j in range(1,sens+1)) and all(h[i] >= h[i+j] for j in range(1,sens+1)):
+                peaks.append({'idx':i,'val':float(h[i])})
+            if all(l[i] <= l[i-j] for j in range(1,sens+1)) and all(l[i] <= l[i+j] for j in range(1,sens+1)):
+                troughs.append({'idx':i,'val':float(l[i])})
+        lc = float(c[-1])
+        res_lines = sorted([p for p in peaks   if p['val']>lc], key=lambda x:x['val'])[:5]
+        sup_lines = sorted([p for p in troughs if p['val']<lc], key=lambda x:-x['val'])[:5]
+
+        # ── Fibo ──
+        look = min(120, n)
+        rh = float(np.max(h[-look:])); rl = float(np.min(l[-look:]))
+        d = rh - rl
+        fibo = {'0':rh,'23.6':rh-d*.236,'38.2':rh-d*.382,'50':rh-d*.5,'61.8':rh-d*.618,'78.6':rh-d*.786,'100':rl}
+
+        # ── Signal Box — Pivot-based (giong AFL) ──
+        # AFL: Buy = trough pivot, Sell = peak pivot
+        # Them VPA filter: Buy phai co strength/test, Sell phai co weakness
+        n_piv = 12  # lookback for pivot detection
+
+        pivot_buy  = np.zeros(n, dtype=bool)
+        pivot_sell = np.zeros(n, dtype=bool)
+
+        for i in range(n_piv, n - n_piv):
+            # Peak pivot = Sell signal
+            if h[i] == max(h[max(0,i-n_piv):i+n_piv+1]):
+                pivot_sell[i] = True
+            # Trough pivot = Buy signal
+            if l[i] == min(l[max(0,i-n_piv):i+n_piv+1]):
+                pivot_buy[i] = True
+
+        # ExRem: remove consecutive signals of same type
+        buy_arr  = np.zeros(n, dtype=bool)
+        sell_arr = np.zeros(n, dtype=bool)
+        last_sig = None
+        for i in range(n):
+            if pivot_buy[i] and last_sig != 'buy':
+                buy_arr[i] = True; last_sig = 'buy'
+            elif pivot_sell[i] and last_sig != 'sell':
+                sell_arr[i] = True; last_sig = 'sell'
+
+        # VPA enhancement: also include VPA-based signals
+        vpa_buy  = strength_down | strength_down1 | stop_vol | (low_vol_test & up_bar)
+        vpa_sell = up_thrust_true | distribute
+
+        # Combine: pivot signals + VPA signals
+        combined_buy  = buy_arr  | vpa_buy
+        combined_sell = sell_arr | vpa_sell
+
+        # ExRem again on combined
+        final_buy  = np.zeros(n, dtype=bool)
+        final_sell = np.zeros(n, dtype=bool)
+        last_sig2 = None
+        for i in range(n):
+            if combined_buy[i] and last_sig2 != 'buy':
+                final_buy[i] = True; last_sig2 = 'buy'
+            elif combined_sell[i] and last_sig2 != 'sell':
+                final_sell[i] = True; last_sig2 = 'sell'
+
+        lbi = int(np.where(final_buy)[0][-1])  if np.any(final_buy)  else -1
+        lsi = int(np.where(final_sell)[0][-1]) if np.any(final_sell) else -1
+
+        if lbi > lsi:
+            stype='BUY'; sprice=float(c[lbi]); sidx=lbi
+        elif lsi >= 0:
+            stype='SELL'; sprice=float(c[lsi]); sidx=lsi
+        else:
+            stype='NEUTRAL'; sprice=lc; sidx=n-1
+
+        # Current P/L
+        cpl = lc-sprice if stype=='BUY' else sprice-lc if stype=='SELL' else 0
+
+        # Targets (% based like AFL)
+        entry = sprice
+        t1 = round(entry*(1+0.005)  if stype=='BUY' else entry*(1-0.005),  2)
+        t2 = round(entry*(1+0.0092) if stype=='BUY' else entry*(1-0.0112), 2)
+        t3 = round(entry*(1+0.0179) if stype=='BUY' else entry*(1-0.0212), 2)
+
+        # Buy/Sell arrays for plotting arrows (last 5 signals)
+        buy_signals  = [{'idx':int(i),'price':round(float(c[i]),2)} for i in np.where(final_buy)[0][-5:]]
+        sell_signals = [{'idx':int(i),'price':round(float(c[i]),2)} for i in np.where(final_sell)[0][-5:]]
+
+        # ── VPA Description ──
+        vpa_desc = []
+        i = n-1
+        if up_thrust_true[i]:    vpa_desc.append('Upthrust sau uptrend - Dau hieu yeu ro rang')
+        elif up_thrust[i]:       vpa_desc.append('Upthrust - Dau hieu yeu')
+        if distribute[i]:        vpa_desc.append('Phan phoi - Smart money dang ban')
+        if no_demand[i]:         vpa_desc.append('Khong co cau - Dau hieu yeu')
+        if no_supply[i]:         vpa_desc.append('Khong co cung - Dau hieu manh')
+        if bull_bar[i]:          vpa_desc.append('Bull bar - Manh')
+        if bear_bar[i]:          vpa_desc.append('Bear bar - Yeu')
+        if stop_vol[i]:          vpa_desc.append('Stopping volume - Co the dao chieu tang')
+        if low_vol_test[i]:      vpa_desc.append('Test cung thanh cong')
+        if strength_down[i] or strength_down1[i]: vpa_desc.append('Suc manh quay lai sau down trend')
+        if effort_up[i]:         vpa_desc.append('Effort to Rise - Bullish')
+        if effort_down[i]:       vpa_desc.append('Effort to Fall - Bearish')
+        if not vpa_desc:         vpa_desc.append('Thanh binh thuong')
+
+        def safe(x):
+            if hasattr(x, 'item'): return x.item()
+            return float(x) if x is not None and not (isinstance(x, float) and (x != x)) else None
+
+        return jsonify({
+            'symbol': symbol.upper(), 'n': n,
+            'bar_colors': bar_colors,
+            # Short trend lines (green/red based on direction)
+            'tl1': [None if (x!=x or x is None) else round(float(x),2) for x in tl1],
+            'tl2': [None if (x!=x or x is None) else round(float(x),2) for x in tl2],
+            'tl1_up': [bool(b) for b in short_up],
+            # Long trend lines (blue/red based on direction)
+            'tl3': [None if (x!=x or x is None) else round(float(x),2) for x in tl3],
+            'tl4': [None if (x!=x or x is None) else round(float(x),2) for x in tl4],
+            'tl3_up': [bool(b) for b in long_up],
+            # Supertrend
+            'st_up':   [None if (x!=x) else round(float(x),2) for x in st_up],
+            'st_down': [None if (x!=x) else round(float(x),2) for x in st_down],
+            # TWT
+            'twt_up':   [round(float(x),4) for x in twt_up],
+            'twt_down': [round(float(x),4) for x in twt_down],
+            'twt_hist': [round(float(x),4) for x in twt_hist],
+            # Levels
+            'res_lines': res_lines, 'sup_lines': sup_lines,
+            'fibo': {k: round(float(v_),2) for k,v_ in fibo.items()},
+            # Trend status
+            'trend_long':  'UP' if float(trend_long_slope[-1])  > 0 else 'DOWN',
+            'trend_med':   'UP' if float(trend_med_slope[-1])   > 0 else 'DOWN',
+            'trend_short': 'UP' if float(trend_short_slope[-1]) > 0 else 'DOWN',
+            'short_trend_str': 'Uptrend' if bool(short_up[-1]) else 'Downtrend',
+            'long_trend_str':  'Uptrend' if bool(long_up[-1])  else 'Downtrend',
+            # Signal
+            'signal': {
+                'type': stype, 'price': round(sprice,2), 'bars_since': n-1-sidx,
+                'current_pl': round(cpl,2),
+                'tar1': round(t1,2), 'tar2': round(t2,2), 'tar3': round(t3,2),
+            },
+            'vpa_desc': vpa_desc,
+            'buy_signals':  buy_signals,
+            'sell_signals': sell_signals,
         })
     except Exception as e:
         traceback.print_exc()
@@ -173,18 +495,14 @@ def ai_analyze():
         groq_key = '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'
         r = req.post(
             'https://api.groq.com/openai/v1/chat/completions',
-            headers={'Authorization': 'Bearer '+groq_key, 'Content-Type': 'application/json'},
-            json={'model': 'llama-3.3-70b-versatile',
-                  'messages': [{'role':'user','content':prompt}], 'max_tokens': 1000},
+            headers={'Authorization':'Bearer '+groq_key,'Content-Type':'application/json'},
+            json={'model':'llama-3.3-70b-versatile','messages':[{'role':'user','content':prompt}],'max_tokens':1000},
             timeout=30
         )
         result = r.json()
-        if 'choices' in result:
-            reply = result['choices'][0]['message']['content']
-        elif 'error' in result:
-            reply = 'Loi: ' + result['error'].get('message', 'Unknown')
-        else:
-            reply = 'Loi: ' + str(result)
+        if 'choices' in result: reply = result['choices'][0]['message']['content']
+        elif 'error' in result: reply = 'Loi: ' + result['error'].get('message','Unknown')
+        else: reply = 'Loi: ' + str(result)
         return jsonify({'reply': reply})
     except Exception as e:
         traceback.print_exc()
@@ -196,29 +514,29 @@ SCAN_SYMBOLS = list(set([
     "SSI","STB","TCB","TPB","VCB","VHM","VIB","VIC","VJC","VNM",
     "VPB","VRE","VND","DXG","KDH","LPB","OCB","REE","SJS","VCI",
     "AGG","AGR","AMD","ANV","ASM","BCG","BSR","BWE","CAV","CEO",
-    "CII","CMG","CMX","CNG","CSV","CTD","CTI","CTR","CTS","DAG",
-    "DAT","DBC","DCM","DGC","DGW","DHC","DIG","DPG","DPM","DPR",
-    "DRC","EIB","ELC","EVE","EVF","FLC","GDT","GEG","GEX","GMD",
-    "HAG","HAH","HAX","HBC","HCM","HDC","HDG","HHP","HHS","HID",
-    "HLD","HMC","HNG","HPX","HQC","HTN","HVN","ICT","IDC","IDI",
-    "IJC","IMP","IPA","IPH","ITC","IVS","KBC","KDC","KHG","KOS",
-    "KSB","KTC","LCG","LDG","LEC","LGC","LHG","LIX","LSS","LTG",
-    "MCP","MDG","MIG","MSB","MST","MTV","NAB","NAF","NAG","NBB",
-    "NCT","NKG","NLG","NNC","NSC","NT2","NTL","NVB","NVT","OGC",
-    "OPC","PAC","PAN","PC1","PCT","PET","PGC","PGD","PGI","PGV",
-    "PHC","PHR","PIT","PJT","PLC","POM","PRC","PRE","PSH","PSI",
-    "PTC","PTL","PVD","PVI","PVP","PVS","PVT","QCG","QNS","RAL",
-    "RDP","RIC","SAF","SAM","SAV","SBT","SC5","SCD","SCR","SCS",
-    "SDG","SDT","SEA","SGN","SGT","SHI","SHP","SIC","SII","SKG",
-    "SLS","SMB","SMC","SPM","SRF","SSB","SSC","STC","STG","STK",
-    "STP","SVD","SZC","SZG","TAC","TBC","TCH","TCL","TCM","TDG",
-    "TDH","TDM","TDP","TDW","TEG","TIG","TIX","TLG","TLH","TMP",
-    "TMS","TMT","TNA","TNT","TON","TPC","TRA","TRC","TSC","TTB",
-    "TTC","TTF","TTP","TV2","TVD","TVS","TYA","UDC","UIC","VCA",
-    "VCF","VCG","VCS","VDS","VFG","VGC","VGS","VGT","VHC","VHL",
-    "VID","VIP","VIR","VIX","VMC","VMD","VNE","VNL","VNS","VNT",
-    "VOS","VPG","VPH","VPI","VPS","VRC","VRG","VSC","VSG","VSH",
-    "VTB","VTJ","VTO","VTS","YEG","NKG","VGI","HUT","DXS",
+    "CII","CMG","CMX","CNG","CSV","CTD","CTI","CTR","DAG","DAT",
+    "DBC","DCM","DGC","DGW","DHC","DIG","DPG","DPM","DPR","DRC",
+    "EIB","ELC","EVE","EVF","FLC","GDT","GEG","GEX","GMD","HAG",
+    "HAH","HAX","HBC","HCM","HDC","HDG","HHP","HHS","HID","HLD",
+    "HMC","HNG","HPX","HQC","HTN","HVN","ICT","IDC","IDI","IJC",
+    "IMP","IPA","IPH","ITC","IVS","KBC","KDC","KHG","KOS","KSB",
+    "KTC","LCG","LDG","LEC","LGC","LHG","LIX","LSS","LTG","MCP",
+    "MDG","MIG","MSB","MST","MTV","NAB","NAF","NAG","NBB","NCT",
+    "NKG","NLG","NNC","NSC","NT2","NTL","NVB","NVT","OGC","OPC",
+    "PAC","PAN","PC1","PCT","PET","PGC","PGD","PGI","PGV","PHC",
+    "PHR","PIT","PJT","PLC","POM","PRC","PRE","PSH","PSI","PTC",
+    "PTL","PVD","PVI","PVP","PVS","PVT","QCG","QNS","RAL","RDP",
+    "RIC","SAF","SAM","SAV","SBT","SC5","SCD","SCR","SCS","SDG",
+    "SDT","SEA","SGN","SGT","SHI","SHP","SIC","SII","SKG","SLS",
+    "SMB","SMC","SPM","SRF","SSB","SSC","STC","STG","STK","STP",
+    "SVD","SZC","SZG","TAC","TBC","TCH","TCL","TCM","TDG","TDH",
+    "TDM","TDP","TDW","TEG","TIG","TIX","TLG","TLH","TMP","TMS",
+    "TMT","TNA","TNT","TON","TPC","TRA","TRC","TSC","TTB","TTC",
+    "TTF","TTP","TV2","TVD","TVS","TYA","UDC","UIC","VCA","VCF",
+    "VCG","VCS","VDS","VFG","VGC","VGS","VGT","VHC","VHL","VID",
+    "VIP","VIR","VIX","VMC","VMD","VNE","VNL","VNS","VNT","VOS",
+    "VPG","VPH","VPI","VPS","VRC","VRG","VSC","VSG","VSH","VTB",
+    "VTJ","VTO","VTS","YEG","NKG","VGI","HUT","DXS",
 ]))
 
 @app.route('/api/scan')
@@ -226,7 +544,6 @@ def scan_stocks():
     try:
         from vnstock.api.quote import Quote
         from concurrent.futures import ThreadPoolExecutor, as_completed
-
         end   = datetime.today().strftime('%Y-%m-%d')
         start = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
 
@@ -242,48 +559,30 @@ def scan_stocks():
         def check(sym):
             try:
                 df = Quote(symbol=sym, source='VCI').history(start=start, end=end, interval='1D')
-                if df is None or df.empty or len(df) < 30:
-                    return None
+                if df is None or df.empty or len(df) < 30: return None
                 closes = list(df['close'].values.astype(float))
                 vols   = list(df['volume'].values)
-
                 ma20 = sma(closes, 20)
-                if ma20[-1] is None or closes[-1] <= ma20[-1]:
-                    return None
-
-                e12  = ema(closes, 12)
-                e26  = ema(closes, 26)
-                macd = [e12[i] - e26[i] for i in range(len(closes))]
+                if ma20[-1] is None or closes[-1] <= ma20[-1]: return None
+                e12  = ema(closes, 12); e26 = ema(closes, 26)
+                macd = [e12[i]-e26[i] for i in range(len(closes))]
                 sig  = ema(macd, 9)
-                if macd[-1] <= sig[-1]:
-                    return None
-
-                pct = (closes[-1] - closes[-2]) / closes[-2] * 100
+                if macd[-1] <= sig[-1]: return None
+                pct = (closes[-1]-closes[-2])/closes[-2]*100
                 vol = int(float(vols[-1]))
                 if vol < 1000: vol = vol * 1000
-
-                return {
-                    'symbol':         sym,
-                    'close':          round(closes[-1], 2),
-                    'ma20':           round(ma20[-1],   2),
-                    'pct':            round(pct, 2),
-                    'volume':         vol,
-                    'macd':           round(macd[-1], 2),
-                    'signal_line':    round(sig[-1],  2),
-                    'above_ma20_pct': round((closes[-1]-ma20[-1])/ma20[-1]*100, 2)
-                }
-            except:
-                return None
+                return {'symbol':sym,'close':round(closes[-1],2),'ma20':round(ma20[-1],2),
+                        'pct':round(pct,2),'volume':vol,'macd':round(macd[-1],2),
+                        'signal_line':round(sig[-1],2),'above_ma20_pct':round((closes[-1]-ma20[-1])/ma20[-1]*100,2)}
+            except: return None
 
         results = []
         with ThreadPoolExecutor(max_workers=20) as ex:
-            for f in as_completed({ex.submit(check, s): s for s in SCAN_SYMBOLS}):
+            for f in as_completed({ex.submit(check,s):s for s in SCAN_SYMBOLS}):
                 r = f.result()
                 if r: results.append(r)
-
         results.sort(key=lambda x: x['above_ma20_pct'], reverse=True)
-        return jsonify({'count': len(results), 'total_scanned': len(SCAN_SYMBOLS), 'results': results})
-
+        return jsonify({'count':len(results),'total_scanned':len(SCAN_SYMBOLS),'results':results})
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
@@ -291,8 +590,7 @@ def scan_stocks():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("="*50)
-    print("  QuyStock Pro — Bloomberg Edition")
+    print("  QuyStock Pro — VPA Edition")
     print(f"  http://localhost:{port}")
     print("="*50)
     app.run(host='0.0.0.0', port=port, debug=False)
- 
