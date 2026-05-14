@@ -1039,64 +1039,60 @@ def vpa_scan():
                 def vavg(i): return vol_avg[i] if not np.isnan(vol_avg[i]) else np.mean(v[max(0,i-5):i+1])
                 def savg(i): return avg_spread[i] if not np.isnan(avg_spread[i]) else np.mean(spread[max(0,i-5):i+1])
 
-                i = n - 1  # last bar
+                i = n - 1  # last bar for win rate calc
                 if i < 5: return None
 
                 signals = []
                 sig_type = None
 
-                # ── BUY signals ──
-                # 1. Strength after down: prev down, today up, high volume, close upper half
-                if (c[i-1] < c[i-2] and c[i] > c[i-1] and
-                    v[i] > vavg(i) * 0.8 and
-                    c[i] > (l[i] + spread[i]*0.5)):
-                    signals.append('Strength')
+                # Check last 3 bars for signals
+                check_range = range(max(5, n-3), n)
+                for i in check_range:
+                    if i < 5: continue
 
-                # 2. No Supply: down bar, narrow spread, low volume
-                if (c[i] < c[i-1] and
-                    spread[i] < savg(i) * 0.8 and
-                    v[i] < vavg(i) * 0.8 and
-                    c[i] > (l[i] + spread[i]*0.3)):
-                    signals.append('NoSupply')
+                    # ── BUY signals ──
+                    if (c[i-1] < c[i-2] and c[i] > c[i-1] and
+                        v[i] > vavg(i) * 0.8 and
+                        c[i] > (l[i] + spread[i]*0.5)):
+                        if 'Strength' not in signals: signals.append('Strength')
 
-                # 3. Stop Volume: large volume, close upper half, not necessarily up
-                if (v[i] > vavg(i) * 1.3 and
-                    c[i] > (l[i] + spread[i]*0.5) and
-                    l[i] <= min(l[max(0,i-5):i+1])):
-                    signals.append('StopVol')
+                    if (c[i] < c[i-1] and
+                        spread[i] < savg(i) * 0.9 and
+                        v[i] < vavg(i) * 0.9 and
+                        c[i] > (l[i] + spread[i]*0.3)):
+                        if 'NoSupply' not in signals: signals.append('NoSupply')
 
-                # 4. Bull bar: up close, wide range, above average volume
-                if (c[i] > c[i-1] and
-                    spread[i] > savg(i) * 0.8 and
-                    v[i] > vavg(i) * 0.7 and
-                    c[i] > (l[i] + spread[i]*0.6)):
-                    signals.append('Bull')
+                    if (v[i] > vavg(i) * 1.2 and
+                        c[i] > (l[i] + spread[i]*0.5) and
+                        l[i] <= min(l[max(0,i-5):i+1])):
+                        if 'StopVol' not in signals: signals.append('StopVol')
 
-                # 5. Test in downtrend: low volume test of support
-                if (v[i] < vavg(i) * 0.7 and
-                    l[i] <= min(l[max(0,i-3):i]) and
-                    c[i] > (l[i] + spread[i]*0.5)):
-                    signals.append('Test')
+                    if (c[i] > c[i-1] and
+                        spread[i] > savg(i) * 0.7 and
+                        v[i] > vavg(i) * 0.6 and
+                        c[i] > (l[i] + spread[i]*0.6)):
+                        if 'Bull' not in signals: signals.append('Bull')
 
-                # ── SELL signals ──
-                # 6. UpThrust: wide range, close lower half, high of day exceeds recent highs
-                if (spread[i] > savg(i) * 0.8 and
-                    c[i] < (l[i] + spread[i]*0.5) and
-                    h[i] >= max(h[max(0,i-3):i])):
-                    signals.append('UpThrust')
+                    if (v[i] < vavg(i) * 0.8 and
+                        l[i] <= min(l[max(0,i-3):i]) and
+                        c[i] > (l[i] + spread[i]*0.5)):
+                        if 'Test' not in signals: signals.append('Test')
 
-                # 7. Distribute: high volume, up bar but close lower half
-                if (v[i] > vavg(i) * 1.2 and
-                    c[i] > c[i-1] and
-                    c[i] < (l[i] + spread[i]*0.5)):
-                    signals.append('Distribute')
+                    # ── SELL signals ──
+                    if (spread[i] > savg(i) * 0.7 and
+                        c[i] < (l[i] + spread[i]*0.5) and
+                        h[i] >= max(h[max(0,i-3):i])):
+                        if 'UpThrust' not in signals: signals.append('UpThrust')
 
-                # 8. No Demand: up bar, narrow, low volume
-                if (c[i] > c[i-1] and
-                    spread[i] < savg(i) * 0.8 and
-                    v[i] < vavg(i) * 0.8 and
-                    c[i] < (l[i] + spread[i]*0.6)):
-                    signals.append('NoDemand')
+                    if (v[i] > vavg(i) * 1.1 and
+                        c[i] > c[i-1] and
+                        c[i] < (l[i] + spread[i]*0.5)):
+                        if 'Distribute' not in signals: signals.append('Distribute')
+
+                    if (c[i] > c[i-1] and
+                        spread[i] < savg(i) * 0.9 and
+                        v[i] < vavg(i) * 0.8):
+                        if 'NoDemand' not in signals: signals.append('NoDemand')
 
                 if not signals: return None
 
