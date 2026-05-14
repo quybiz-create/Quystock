@@ -677,9 +677,30 @@ Chart.register({id:'arrows',afterDatasetsDraw:function(chart){
 }});
 
 async function checkServer(){
-  try{var r=await fetch(API+'/history/VNM?days=3',{signal:AbortSignal.timeout(4000)});
-    if(r.ok){document.getElementById('sdot').className='dot live';document.getElementById('stxt').textContent='LIVE · VNSTOCK';document.getElementById('offBanner').style.display='none';return true;}}catch(e){}
-  document.getElementById('sdot').className='dot offline';document.getElementById('stxt').textContent='OFFLINE';document.getElementById('offBanner').style.display='block';return false;}
+  try{
+    var r=await fetch(API+'/history/VNM?days=3',{signal:AbortSignal.timeout(15000)});
+    if(r.ok){
+      document.getElementById('sdot').className='dot live';
+      document.getElementById('stxt').textContent='LIVE · VNSTOCK';
+      document.getElementById('offBanner').style.display='none';
+      return true;
+    }
+  }catch(e){}
+  // Retry once more
+  try{
+    var r2=await fetch(API+'/history/VNM?days=3',{signal:AbortSignal.timeout(20000)});
+    if(r2.ok){
+      document.getElementById('sdot').className='dot live';
+      document.getElementById('stxt').textContent='LIVE · VNSTOCK';
+      document.getElementById('offBanner').style.display='none';
+      return true;
+    }
+  }catch(e){}
+  document.getElementById('sdot').className='dot offline';
+  document.getElementById('stxt').textContent='OFFLINE';
+  document.getElementById('offBanner').style.display='block';
+  return false;
+}
 
 function saveWL(){localStorage.setItem('qs_wl',JSON.stringify(watchlist));}
 
