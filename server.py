@@ -827,6 +827,310 @@ def get_sector():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+# ── BACKTEST ─────────────────────────────────────────────────────────────────
+@app.route('/api/backtest/<symbol>')
+def run_backtest(symbol):
+    try:
+        from vnstock.api.quote import Quote
+        import numpy as np
+
+        strategy = request.args.get('strategy', 'both')
+        days = int(request.args.get('days', 365))
+
+        end   = datetime.today().strftime('%Y-%m-%d')
+        start = (datetime.today() - timedelta(days=days+60)).strftime('%Y-%m-%d')
+
+        df = Quote(symbol=symbol, source='VCI').history(start=start, end=end, interval='1D')
+        if df is None or df.empty or len(df) < 60:
+            return jsonify({'error': 'Khong du du lieu'}), 404
+
+        o = df['open'].values.astype(float)
+        h = df['high'].values.astype(float)
+        l = df['low'].values.astype(float)
+        c = df['close'].values.astype(float)
+        v = df['volume'].values.astype(float)
+        dates = [str(df.iloc[i].get('time', df.iloc[i].get('date', '')))[:10] for i in range(len(df))]
+        n = len(c)
+
+        def ma(arr, p):
+            r = np.full(len(arr), np.nan)
+            for i in range(p-1, len(arr)):
+                r[i] = np.mean(arr[i-p+1:i+1])
+            return r
+
+        def ema_fn(arr, p):
+            k = 2/(p+1)
+            out = np.full(len(arr), np.nan)
+            out[p-1] = np.mean(arr[:p])
+            for i in range(p, len(arr)):
+                out[i] = arr[i]*k + out[i-1]*(1-k)
+            return out
+
+        def run_trades(buy_signals, sell_signals, closes, dates, name):
+            """Run through signals and calculate trades"""
+            trades = []
+            in_trade = False
+            entry_price = 0
+            entry_date = ''
+            entry_idx = 0
+
+            for i in range(1, n):
+                if not in_trade and buy_signals[i]:
+                    in_trade = True
+                    entry_price = closes[i]
+                    entry_date = dates[i]
+                    entry_idx = i
+                elif in_trade and (sell_signals[i] or i == n-1):
+                    exit_price = closes[i]
+                    pnl_pct = (exit_price - entry_price) / entry_price * 100
+                    hold_days = i - entry_idx
+                    trades.append({
+                        'entry_date': entry_date,
+                        'exit_date': dates[i],
+                        'entry': round(float(entry_price), 2),
+                        'exit': round(float(exit_price), 2),
+                        'pnl_pct': round(float(pnl_pct), 2),
+                        'hold_days': int(hold_days),
+                        'win': bool(pnl_pct > 0),
+                        'strategy': name,
+                    })
+                    in_trade = False
+
+            return trades
+
+        results = {}
+
+        # ── Strategy 1: VPA Signals ──
+        if strategy in ['vpa', 'both']:
+            vol_avg = ma(v, 20)
+            avg_spread = ma(h - l, 20)
+            spread = h - l
+            up_bar = np.concatenate([[False], c[1:] > c[:-1]])
+            down_bar = np.concatenate([[False], c[1:] < c[:-1]])
+            up_close = c >= (spread * 0.6 + l)
+            down_close = c <= (spread * 0.4 + l)
+            low_volume = np.concatenate([[False,False], (v[2:]<v[1:-1])&(v[2:]<v[:-2])])
+            wide_range = spread > (1.5 * avg_spread)
+            narrow_range = spread < (0.7 * avg_spread)
+
+            # Buy signals: strength, no_supply, stop_vol, bull_bar
+            strength = np.concatenate([[False], (v[1:]>v[:-1]) & down_bar[:-1] & up_bar[1:] & up_close[1:]])
+            no_supply = down_bar & narrow_range & low_volume & (c < (spread*0.5+l))
+            stop_vol = (c > (spread*0.5+l)) & (v > 1.5*np.where(np.isnan(vol_avg), 1, vol_avg))
+            bull_bar = np.where(np.isnan(vol_avg), False, v > vol_avg) & up_close & up_bar & wide_range
+
+            vpa_buy = strength | no_supply | stop_vol | bull_bar
+
+            # Sell signals: upthrust, distribute
+            up_thrust = wide_range & down_close & np.concatenate([[False], h[1:]>h[:-1]])
+            distribute = (v > 1.5*np.where(np.isnan(vol_avg), 1, vol_avg)) & down_close & up_bar
+
+            vpa_sell = up_thrust | distribute
+
+            vpa_trades = run_trades(vpa_buy, vpa_sell, c, dates, 'VPA')
+            results['vpa'] = vpa_trades
+
+        # ── Strategy 2: MA Cross ──
+        if strategy in ['ma', 'both']:
+            ma20 = ma(c, 20)
+            ma50 = ma(c, 50)
+            e12 = ema_fn(c, 12)
+            e26 = ema_fn(c, 26)
+            macd = e12 - e26
+            signal = ema_fn(np.where(np.isnan(macd), 0, macd), 9)
+
+            ma_buy  = np.zeros(n, dtype=bool)
+            ma_sell = np.zeros(n, dtype=bool)
+
+            for i in range(1, n):
+                if np.isnan(ma20[i]) or np.isnan(ma50[i]): continue
+                # Buy: MA20 cross above MA50 + MACD > signal
+                if (ma20[i] > ma50[i] and ma20[i-1] <= ma50[i-1] and
+                    not np.isnan(macd[i]) and macd[i] > signal[i]):
+                    ma_buy[i] = True
+                # Sell: MA20 cross below MA50
+                if ma20[i] < ma50[i] and ma20[i-1] >= ma50[i-1]:
+                    ma_sell[i] = True
+
+            ma_trades = run_trades(ma_buy, ma_sell, c, dates, 'MA Cross')
+            results['ma'] = ma_trades
+
+        # ── Combine and calculate stats ──
+        def calc_stats(trades):
+            if not trades: return {'trades': [], 'total': 0, 'win_rate': 0, 'total_pnl': 0, 'avg_pnl': 0, 'max_win': 0, 'max_loss': 0, 'avg_hold': 0, 'equity': []}
+            total = len(trades)
+            wins  = sum(1 for t in trades if t['win'])
+            pnls  = [t['pnl_pct'] for t in trades]
+            # Equity curve (compound)
+            equity = [100.0]
+            for t in trades:
+                equity.append(round(equity[-1] * (1 + t['pnl_pct']/100), 2))
+            max_dd = 0
+            peak = equity[0]
+            for e in equity:
+                if e > peak: peak = e
+                dd = (peak - e) / peak * 100
+                if dd > max_dd: max_dd = dd
+            return {
+                'trades': trades,
+                'total': total,
+                'win_rate': round(wins/total*100, 1),
+                'total_pnl': round(sum(pnls), 2),
+                'avg_pnl': round(sum(pnls)/total, 2),
+                'max_win': round(max(pnls), 2),
+                'max_loss': round(min(pnls), 2),
+                'avg_hold': round(sum(t['hold_days'] for t in trades)/total, 1),
+                'max_drawdown': round(max_dd, 2),
+                'equity': equity,
+            }
+
+        response = {
+            'symbol': symbol.upper(),
+            'days': days,
+            'price_data': [{'date': dates[i], 'close': round(float(c[i]),2)} for i in range(n)],
+        }
+        if 'vpa' in results:
+            response['vpa'] = calc_stats(results['vpa'])
+        if 'ma' in results:
+            response['ma'] = calc_stats(results['ma'])
+
+        return jsonify(response)
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+
+# ── VPA SIGNAL SCANNER ───────────────────────────────────────────────────────
+@app.route('/api/vpascan')
+def vpa_scan():
+    try:
+        from vnstock.api.quote import Quote
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import numpy as np
+
+        end   = datetime.today().strftime('%Y-%m-%d')
+        start = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
+        bt_start = (datetime.today() - timedelta(days=90)).strftime('%Y-%m-%d')
+
+        def ma(arr, p):
+            r = np.full(len(arr), np.nan)
+            for i in range(p-1, len(arr)):
+                r[i] = np.mean(arr[i-p+1:i+1])
+            return r
+
+        def check_vpa(sym):
+            try:
+                df = Quote(symbol=sym, source='VCI').history(start=start, end=end, interval='1D')
+                if df is None or df.empty or len(df) < 30: return None
+
+                o = df['open'].values.astype(float)
+                h = df['high'].values.astype(float)
+                l = df['low'].values.astype(float)
+                c = df['close'].values.astype(float)
+                v = df['volume'].values.astype(float)
+                n = len(c)
+
+                vol_avg    = ma(v, 20)
+                avg_spread = ma(h - l, 20)
+                spread     = h - l
+                up_bar     = np.concatenate([[False], c[1:] > c[:-1]])
+                down_bar   = np.concatenate([[False], c[1:] < c[:-1]])
+                up_close   = c >= (spread * 0.6 + l)
+                down_close = c <= (spread * 0.4 + l)
+                low_vol    = np.concatenate([[False,False], (v[2:]<v[1:-1])&(v[2:]<v[:-2])])
+                wide       = spread > (1.5 * np.where(np.isnan(avg_spread), spread, avg_spread))
+                narrow     = spread < (0.7 * np.where(np.isnan(avg_spread), spread, avg_spread))
+                vavg       = np.where(np.isnan(vol_avg), v, vol_avg)
+
+                # VPA signals on last bar
+                i = n - 1
+                signals = []
+
+                # BUY signals
+                if i>0 and v[i]>vavg[i] and down_bar[i-1] and up_bar[i] and up_close[i]:
+                    signals.append('Strength')
+                if down_bar[i] and narrow[i] and (i>=2 and low_vol[i]) and c[i]<(spread[i]*0.5+l[i]):
+                    signals.append('NoSupply')
+                if up_close[i] and v[i]>1.5*vavg[i] and not up_bar[i]:
+                    signals.append('StopVol')
+                if v[i]>vavg[i] and up_close[i] and up_bar[i] and wide[i]:
+                    signals.append('Bull')
+
+                # SELL signals
+                if wide[i] and down_close[i] and i>0 and h[i]>h[i-1]:
+                    signals.append('UpThrust')
+                if v[i]>1.5*vavg[i] and down_close[i] and up_bar[i]:
+                    signals.append('Distribute')
+
+                if not signals: return None
+
+                # Determine signal type
+                buy_sigs  = ['Strength','NoSupply','StopVol','Bull']
+                sell_sigs = ['UpThrust','Distribute']
+                has_buy  = any(s in buy_sigs  for s in signals)
+                has_sell = any(s in sell_sigs for s in signals)
+                if has_buy and has_sell:
+                    sig_type = 'MIXED'
+                elif has_buy:
+                    sig_type = 'BUY'
+                else:
+                    sig_type = 'SELL'
+
+                # Quick backtest win rate (last 90 days)
+                bt_idx = max(0, n - 65)
+                bc = c[bt_idx:]
+                wins, total_bt = 0, 0
+                for j in range(2, len(bc)-5):
+                    entry = bc[j]
+                    future = bc[j+1:j+6]
+                    if len(future) == 0: continue
+                    best = max(future) if sig_type in ['BUY','MIXED'] else 0
+                    worst = min(future)
+                    if sig_type == 'BUY':
+                        if best > entry * 1.02: wins += 1
+                        total_bt += 1
+                    elif sig_type == 'SELL':
+                        if worst < entry * 0.98: wins += 1
+                        total_bt += 1
+
+                win_rate = round(wins/total_bt*100, 1) if total_bt > 0 else 0
+                pct = (c[-1]-c[-2])/c[-2]*100 if n>1 else 0
+
+                return {
+                    'sym': sym,
+                    'signal': sig_type,
+                    'signals': signals,
+                    'close': round(float(c[-1]), 2),
+                    'pct': round(float(pct), 2),
+                    'volume': int(float(v[-1])),
+                    'win_rate': win_rate,
+                    'total_bt': total_bt,
+                }
+            except: return None
+
+        results = []
+        with ThreadPoolExecutor(max_workers=20) as ex:
+            futures = {ex.submit(check_vpa, s): s for s in SCAN_SYMBOLS}
+            for f in as_completed(futures):
+                r = f.result()
+                if r: results.append(r)
+
+        # Sort: BUY first, then SELL, then MIXED, by win_rate
+        order = {'BUY':0,'SELL':1,'MIXED':2}
+        results.sort(key=lambda x: (order.get(x['signal'],3), -x['win_rate']))
+
+        return jsonify({
+            'count': len(results),
+            'total_scanned': len(SCAN_SYMBOLS),
+            'results': results
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("="*50)
@@ -834,5 +1138,4 @@ if __name__ == '__main__':
     print(f"  http://localhost:{port}")
     print("="*50)
     app.run(host='0.0.0.0', port=port, debug=False)
- 
  

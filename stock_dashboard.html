@@ -195,7 +195,37 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .toast{position:fixed;bottom:12px;right:12px;background:var(--bg3);border:1px solid var(--border2);border-left:2px solid var(--amber);padding:5px 12px;font-size:10px;letter-spacing:1px;z-index:9000;opacity:0;transform:translateY(6px);transition:all .25s;pointer-events:none;}
-/* SECTOR HEATMAP */
+/* BACKTEST */
+.bt-wrap{flex:1;display:flex;flex-direction:column;overflow-y:auto;background:var(--bg1);}
+.bt-ctrl{padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;flex-shrink:0;}
+.bt-inp-grp{display:flex;flex-direction:column;gap:3px;}
+.bt-lbl{font-size:7px;color:var(--gray2);letter-spacing:1px;}
+.bt-inp{background:var(--bg3);border:1px solid var(--border2);color:var(--amber);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none;width:90px;text-transform:uppercase;}
+.bt-inp:focus{border-color:var(--amber);}
+.bt-run{background:var(--amber3);border:none;color:var(--black);font-family:var(--mono);font-size:10px;font-weight:700;padding:6px 16px;cursor:pointer;letter-spacing:1px;}
+.bt-run:hover{background:var(--amber);}
+.bt-run:disabled{opacity:.4;cursor:not-allowed;}
+.bt-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:10px 12px;flex-shrink:0;}
+.bt-stat-block{background:var(--bg2);border:1px solid var(--border);padding:10px;}
+.bt-stat-title{font-size:9px;color:var(--amber3);letter-spacing:2px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);}
+.bt-stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;}
+.bt-stat-item{background:var(--bg3);padding:6px 8px;}
+.bt-stat-lbl{font-size:7px;color:var(--gray2);letter-spacing:1px;margin-bottom:2px;}
+.bt-stat-val{font-size:13px;font-weight:700;font-family:var(--tech);}
+.bt-chart-wrap{padding:0 12px 10px;flex-shrink:0;}
+.bt-chart-title{font-size:8px;color:var(--amber3);letter-spacing:1px;margin-bottom:6px;}
+.bt-chart-canvas{height:150px;max-height:150px;display:block;}
+.bt-trades{padding:0 12px 12px;flex-shrink:0;}
+.bt-trades-title{font-size:8px;color:var(--amber3);letter-spacing:2px;margin-bottom:6px;}
+.bt-table{width:100%;border-collapse:collapse;font-size:10px;}
+.bt-table th{font-size:7px;color:var(--amber3);letter-spacing:1px;padding:4px 6px;border-bottom:1px solid var(--border);background:var(--bg2);text-align:left;}
+.bt-table td{padding:5px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
+.bt-table tr:hover td{background:var(--bg3);}
+@media(max-width:600px){
+  .bt-stats{grid-template-columns:1fr;}
+  .bt-ctrl{flex-direction:column;}
+  .bt-inp{width:100%;}
+}
 .sector-wrap{padding:8px 12px;flex-shrink:0;}
 .sector-title{font-size:8px;color:var(--amber3);letter-spacing:2px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
 .sector-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;}
@@ -422,6 +452,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
       <button class="tab-btn" onclick="switchTab('ai',this)">PHAN TICH AI</button>
       <button class="tab-btn" onclick="switchTab('market',this);loadBreadth()">MARKET</button>
       <button class="tab-btn" onclick="switchTab('portfolio',this);refreshPortfolioPrices()">DANH MUC</button>
+      <button class="tab-btn" onclick="switchTab('backtest',this)">BACKTEST</button>
       <div class="tb-sep"></div>
       <div class="cgrp" id="typeG">
         <button class="cbtn active" onclick="setType('candle',this)">Nen</button>
@@ -654,19 +685,69 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
       </div>
     </div>
 
+    <!-- BACKTEST PANEL -->
+    <div class="panel" id="panel-backtest">
+      <div class="bt-wrap">
+        <!-- Controls -->
+        <div class="bt-ctrl">
+          <div class="bt-inp-grp">
+            <label class="bt-lbl">MA CO PHIEU</label>
+            <input class="bt-inp" id="btSym" placeholder="VNM" maxlength="10">
+          </div>
+          <div class="bt-inp-grp">
+            <label class="bt-lbl">PERIOD</label>
+            <div class="cgrp" id="btPerG">
+              <button class="cbtn" onclick="setBtPer(180,this)">6T</button>
+              <button class="cbtn active" onclick="setBtPer(365,this)">1N</button>
+              <button class="cbtn" onclick="setBtPer(730,this)">2N</button>
+            </div>
+          </div>
+          <div class="bt-inp-grp">
+            <label class="bt-lbl">CHIEN LUOC</label>
+            <div class="cgrp" id="btStratG">
+              <button class="cbtn active" onclick="setBtStrat('both',this)">CA 2</button>
+              <button class="cbtn" onclick="setBtStrat('vpa',this)">VPA</button>
+              <button class="cbtn" onclick="setBtStrat('ma',this)">MA</button>
+            </div>
+          </div>
+          <button class="bt-run" id="btRunBtn" onclick="runBacktest()">▶ CHAY BACKTEST</button>
+        </div>
+        <!-- Results -->
+        <div id="btResults">
+          <div class="empty" style="padding:40px 0;">
+            <div class="empty-s">◈</div>
+            <div class="empty-t">NHAP MA VA CHAY BACKTEST</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 <div class="moverlay" id="scanModal">
   <div class="modal">
     <div class="mhdr">
-      <div><div class="mtitle">◈ BO LOC CO PHIEU</div><div class="msub">GIA > MA20 | MACD > SIGNAL</div></div>
+      <div><div class="mtitle">◈ BO LOC CO PHIEU</div></div>
       <button class="mclose" onclick="closeScan()">✕</button>
+    </div>
+    <!-- Scan tabs -->
+    <div style="display:flex;border-bottom:1px solid var(--border);background:var(--bg2);">
+      <button id="scanTabMA" onclick="switchScanTab('ma')" style="flex:1;background:var(--amber3);border:none;border-bottom:2px solid var(--amber);color:var(--black);font-family:var(--mono);font-size:9px;font-weight:700;padding:6px;cursor:pointer;letter-spacing:1px;">MA+MACD</button>
+      <button id="scanTabVPA" onclick="switchScanTab('vpa')" style="flex:1;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--gray1);font-family:var(--mono);font-size:9px;padding:6px;cursor:pointer;letter-spacing:1px;">VPA SIGNALS</button>
     </div>
     <div class="mbody" id="scanBody">
       <div class="scan-start">
         <div class="scan-start-txt">NHAN SCAN DE QUET ~300 MA</div>
         <button class="scan-start-btn" onclick="startScan()">▶ BAT DAU SCAN</button>
       </div>
+    </div>
+    <div class="mbody" id="vpaScanBody" style="display:none;">
+      <div class="scan-start">
+        <div class="scan-start-txt">QUET TIN HIEU VPA + WIN RATE</div>
+        <div style="font-size:9px;color:var(--gray2);margin-bottom:14px;">BUY: Bull, NoSupply, Strength, StopVol<br>SELL: UpThrust, Distribute</div>
+        <button class="scan-start-btn" onclick="startVPAScan()">▶ QUET VPA SIGNALS</button>
+      </div>
+    </div>
     </div>
   </div>
 </div>
@@ -1185,6 +1266,214 @@ function renderScan(data){
         +'<td style="color:var(--gray1)">'+vol+'</td></tr>';});
     html+='</tbody></table>';}
   body.innerHTML=html;}
+
+// ── BACKTEST ─────────────────────────────────────────────────────────────
+var btPer = 365, btStrat = 'both', btChart = null;
+
+function setBtPer(p, btn) {
+  btPer = p;
+  document.querySelectorAll('#btPerG .cbtn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+}
+function setBtStrat(s, btn) {
+  btStrat = s;
+  document.querySelectorAll('#btStratG .cbtn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+}
+
+async function runBacktest() {
+  var sym = document.getElementById('btSym').value.trim().toUpperCase() || curSym;
+  if(!sym) { toast('Nhap ma co phieu!', true); return; }
+  document.getElementById('btSym').value = sym;
+
+  var btn = document.getElementById('btRunBtn');
+  btn.disabled = true; btn.textContent = '⏳ DANG CHAY...';
+  document.getElementById('btResults').innerHTML = '<div class="empty" style="padding:30px 0;"><div class="spin"></div><div class="empty-t">DANG BACKTEST '+sym+'...</div></div>';
+
+  try {
+    var r = await fetch('/api/backtest/'+sym+'?strategy='+btStrat+'&days='+btPer);
+    var data = await r.json();
+    if(data.error) throw new Error(data.error);
+    renderBacktestResults(data);
+  } catch(e) {
+    document.getElementById('btResults').innerHTML = '<div style="padding:20px;color:var(--red);font-size:11px;">LOI: '+e.message+'</div>';
+  }
+  btn.disabled = false; btn.textContent = '▶ CHAY BACKTEST';
+}
+
+function renderBacktestResults(data) {
+  var html = '<div class="bt-stats">';
+  var strategies = [];
+  if(data.vpa) strategies.push({key:'vpa', name:'VPA Signals', color:'var(--cyan)', data: data.vpa});
+  if(data.ma)  strategies.push({key:'ma',  name:'MA Cross',    color:'var(--amber)', data: data.ma});
+
+  strategies.forEach(function(s) {
+    var d = s.data;
+    var plColor = d.total_pnl >= 0 ? 'var(--green2)' : 'var(--red2)';
+    var wrColor = d.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
+    html += '<div class="bt-stat-block">'
+      +'<div class="bt-stat-title" style="color:'+s.color+'">'+s.name+'</div>'
+      +'<div class="bt-stat-grid">'
+      +'<div class="bt-stat-item"><div class="bt-stat-lbl">SO LENH</div><div class="bt-stat-val">'+d.total+'</div></div>'
+      +'<div class="bt-stat-item"><div class="bt-stat-lbl">WIN RATE</div><div class="bt-stat-val" style="color:'+wrColor+'">'+d.win_rate+'%</div></div>'
+      +'<div class="bt-stat-item"><div class="bt-stat-lbl">TONG LAI/LO</div><div class="bt-stat-val" style="color:'+plColor+'">'+(d.total_pnl>=0?'+':'')+d.total_pnl+'%</div></div>'
+      +'<div class="bt-stat-item"><div class="bt-stat-lbl">TB/LENH</div><div class="bt-stat-val" style="color:'+(d.avg_pnl>=0?'var(--green)':'var(--red)')+'">'+(d.avg_pnl>=0?'+':'')+d.avg_pnl+'%</div></div>'
+      +'<div class="bt-stat-item"><div class="bt-stat-lbl">LENH TOT NHAT</div><div class="bt-stat-val" style="color:var(--green)">+'+d.max_win+'%</div></div>'
+      +'<div class="bt-stat-item"><div class="bt-stat-lbl">LENH XAU NHAT</div><div class="bt-stat-val" style="color:var(--red)">'+d.max_loss+'%</div></div>'
+      +'<div class="bt-stat-item"><div class="bt-stat-lbl">MAX DRAWDOWN</div><div class="bt-stat-val" style="color:var(--red)">-'+d.max_drawdown+'%</div></div>'
+      +'<div class="bt-stat-item"><div class="bt-stat-lbl">TB GIU (NGAY)</div><div class="bt-stat-val">'+d.avg_hold+'</div></div>'
+      +'</div></div>';
+  });
+  html += '</div>';
+
+  // Equity curve chart
+  html += '<div class="bt-chart-wrap" style="background:var(--bg2);border:1px solid var(--border);padding:10px;margin:0 12px 10px;">'
+    +'<div class="bt-chart-title">◈ DUONG VON (EQUITY CURVE) — bat dau 100</div>'
+    +'<div style="height:150px;position:relative;"><canvas id="btEquityChart"></canvas></div></div>';
+
+  // Trade tables
+  strategies.forEach(function(s) {
+    if(!s.data.trades.length) return;
+    html += '<div class="bt-trades"><div class="bt-trades-title">◈ CHI TIET LENH — '+s.name+'</div>'
+      +'<div style="overflow-x:auto;"><table class="bt-table"><thead><tr>'
+      +'<th>NGAY MUA</th><th>NGAY BAN</th><th>GIA MUA</th><th>GIA BAN</th><th>LAI/LO</th><th>SO NGAY</th><th>KET QUA</th>'
+      +'</tr></thead><tbody>';
+    s.data.trades.forEach(function(t) {
+      var plc = t.pnl_pct >= 0 ? 'var(--green)' : 'var(--red)';
+      var sign = t.pnl_pct >= 0 ? '+' : '';
+      html += '<tr>'
+        +'<td style="color:var(--amber)">'+t.entry_date+'</td>'
+        +'<td style="color:var(--gray1)">'+t.exit_date+'</td>'
+        +'<td>'+t.entry.toLocaleString()+'</td>'
+        +'<td>'+t.exit.toLocaleString()+'</td>'
+        +'<td style="color:'+plc+';font-weight:700;">'+sign+t.pnl_pct+'%</td>'
+        +'<td style="color:var(--gray1)">'+t.hold_days+'</td>'
+        +'<td style="color:'+plc+';">'+(t.win?'✓ WIN':'✗ LOSS')+'</td>'
+        +'</tr>';
+    });
+    html += '</tbody></table></div></div>';
+  });
+
+  document.getElementById('btResults').innerHTML = html;
+
+  // Draw equity curve
+  setTimeout(function() {
+    if(btChart){try{btChart.destroy();}catch(e){}}
+    var ctx = document.getElementById('btEquityChart');
+    if(!ctx) return;
+    var datasets = [];
+    var colors = ['#00ccff','#ff9500'];
+    strategies.forEach(function(s, i) {
+      if(!s.data.equity.length) return;
+      datasets.push({
+        label: s.name,
+        data: s.data.equity,
+        borderColor: colors[i],
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+        tension: .3,
+      });
+    });
+    var maxLen = Math.max.apply(null, strategies.map(function(s){return s.data.equity.length;}));
+    var labels = Array.from({length: maxLen}, function(_,i){return i+1;});
+    datasets.push({
+      label: 'Base (100)',
+      data: new Array(maxLen).fill(100),
+      borderColor: 'rgba(255,255,255,.7)',
+      borderWidth: 1.5,
+      borderDash: [5,3],
+      pointRadius: 0,
+      fill: false,
+    });
+    btChart = new Chart(ctx, {
+      type: 'line',
+      data: {labels: labels, datasets: datasets},
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {legend:{display:true,labels:{color:'#888',font:{family:"'Roboto Mono'",size:8},boxWidth:10}}},
+        scales: {
+          x: {display:false},
+          y: {position:'right',ticks:{color:'#555',font:{family:"'Roboto Mono'",size:8},callback:function(v){return v.toFixed(0);}},grid:{color:'rgba(42,42,42,.8)'}}
+        }
+      }
+    });
+  }, 100);
+}
+
+var curScanTab = 'ma';
+function switchScanTab(tab) {
+  curScanTab = tab;
+  var maBtn  = document.getElementById('scanTabMA');
+  var vpaBtn = document.getElementById('scanTabVPA');
+  var maBody  = document.getElementById('scanBody');
+  var vpaBody = document.getElementById('vpaScanBody');
+  if(tab === 'ma') {
+    maBtn.style.background='var(--amber3)'; maBtn.style.color='var(--black)'; maBtn.style.borderBottomColor='var(--amber)';
+    vpaBtn.style.background='transparent'; vpaBtn.style.color='var(--gray1)'; vpaBtn.style.borderBottomColor='transparent';
+    maBody.style.display='block'; vpaBody.style.display='none';
+  } else {
+    vpaBtn.style.background='var(--amber3)'; vpaBtn.style.color='var(--black)'; vpaBtn.style.borderBottomColor='var(--amber)';
+    maBtn.style.background='transparent'; maBtn.style.color='var(--gray1)'; maBtn.style.borderBottomColor='transparent';
+    maBody.style.display='none'; vpaBody.style.display='block';
+  }
+}
+
+var vpaScanResults = [];
+async function startVPAScan() {
+  var body = document.getElementById('vpaScanBody');
+  body.innerHTML = '<div style="padding:16px 0;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><div class="spin"></div><span style="font-size:10px;color:var(--gray1);">DANG QUET VPA SIGNALS...</span></div><div class="sprog"><div class="sprogbar" id="vpaBar"></div></div></div>';
+  var prog=0, iv=setInterval(function(){prog=Math.min(prog+Math.random()*1.5,90);var b=document.getElementById('vpaBar');if(b)b.style.width=prog+'%';},600);
+  try {
+    var resp = await fetch('/api/vpascan');
+    var data = await resp.json();
+    clearInterval(iv);
+    if(data.error) throw new Error(data.error);
+    vpaScanResults = data.results;
+    renderVPAScan(data);
+  } catch(e) {
+    clearInterval(iv);
+    body.innerHTML='<div style="color:var(--red);padding:16px;">LOI: '+e.message+'</div><button onclick="startVPAScan()" style="margin:8px;background:var(--amber3);border:none;color:black;font-family:var(--mono);font-size:10px;padding:6px 14px;cursor:pointer;">THU LAI</button>';
+  }
+}
+
+function renderVPAScan(data) {
+  var body = document.getElementById('vpaScanBody');
+  var buys  = data.results.filter(function(r){return r.signal==='BUY';});
+  var sells = data.results.filter(function(r){return r.signal==='SELL';});
+  var mixed = data.results.filter(function(r){return r.signal==='MIXED';});
+
+  var html = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;padding:8px 0 0;">'
+    +'<span style="font-size:10px;color:var(--gray1);">Tim thay: <b style="color:var(--green2)">'+buys.length+' BUY</b> | <b style="color:var(--red2)">'+sells.length+' SELL</b> | '+mixed.length+' MIXED / '+data.total_scanned+'</span>'
+    +'<button onclick="startVPAScan()" style="margin-left:auto;background:transparent;border:1px solid var(--amber3);color:var(--amber);font-family:var(--mono);font-size:8px;padding:2px 8px;cursor:pointer;">↺ QUET LAI</button>'
+    +'</div>';
+
+  function renderGroup(list, title, color) {
+    if(!list.length) return '';
+    var h = '<div style="font-size:8px;color:'+color+';letter-spacing:2px;margin:8px 0 4px;">'+title+' ('+list.length+')</div>'
+      +'<table class="stbl"><thead><tr><th>MA</th><th>TIN HIEU</th><th>GIA</th><th>%NGAY</th><th>WIN RATE</th><th>VOL</th></tr></thead><tbody>';
+    list.forEach(function(r) {
+      var pc = r.pct>=0?'var(--green)':'var(--red)';
+      var wc = r.win_rate>=60?'var(--green)':r.win_rate>=45?'var(--amber)':'var(--red)';
+      var vol = r.volume>=1e6?(r.volume/1e6).toFixed(1)+'M':(r.volume/1e3).toFixed(0)+'K';
+      h += '<tr onclick="pickScan(\''+r.sym+'\')">'
+        +'<td class="ssym">'+r.sym+'</td>'
+        +'<td style="font-size:9px;color:var(--cyan)">'+r.signals.join(', ')+'</td>'
+        +'<td>'+r.close.toLocaleString()+'</td>'
+        +'<td style="color:'+pc+'">'+(r.pct>=0?'+':'')+r.pct+'%</td>'
+        +'<td style="color:'+wc+';font-weight:700;">'+r.win_rate+'%</td>'
+        +'<td style="color:var(--gray1)">'+vol+'</td>'
+        +'</tr>';
+    });
+    h += '</tbody></table>';
+    return h;
+  }
+
+  html += renderGroup(buys, '◈ TIN HIEU MUA', 'var(--green2)');
+  html += renderGroup(sells, '◈ TIN HIEU BAN', 'var(--red2)');
+  html += renderGroup(mixed, '◈ TIN HIEU HON HOP', 'var(--amber2)');
+  body.innerHTML = html;
+}
 
 function setScanSort(by){scanSort=by;renderScan();}
 function pickScan(sym){closeScan();if(watchlist.indexOf(sym)<0){watchlist.push(sym);saveWL();}selectStock(sym);}
