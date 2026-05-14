@@ -195,7 +195,25 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .toast{position:fixed;bottom:12px;right:12px;background:var(--bg3);border:1px solid var(--border2);border-left:2px solid var(--amber);padding:5px 12px;font-size:10px;letter-spacing:1px;z-index:9000;opacity:0;transform:translateY(6px);transition:all .25s;pointer-events:none;}
-/* FEAR & GREED */
+/* SECTOR HEATMAP */
+.sector-wrap{padding:8px 12px;flex-shrink:0;}
+.sector-title{font-size:8px;color:var(--amber3);letter-spacing:2px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.sector-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;}
+.sector-card{padding:8px 10px;border-radius:2px;cursor:pointer;border:1px solid rgba(255,255,255,.08);transition:all .2s;position:relative;overflow:hidden;}
+.sector-card:hover{border-color:rgba(255,255,255,.3);transform:translateY(-1px);}
+.sector-name{font-size:8px;color:rgba(255,255,255,.8);letter-spacing:1px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sector-pct{font-size:16px;font-weight:700;font-family:var(--tech);}
+.sector-sub{font-size:7px;color:rgba(255,255,255,.5);margin-top:2px;}
+.sector-detail{background:var(--bg2);border:1px solid var(--border);padding:10px;margin-top:8px;display:none;}
+.sector-detail.show{display:block;}
+.sector-detail-title{font-size:9px;color:var(--amber3);letter-spacing:2px;margin-bottom:8px;}
+.sector-stocks{display:flex;flex-wrap:wrap;gap:5px;}
+.sector-stock{padding:4px 8px;font-size:9px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,.1);}
+.sector-stock:hover{border-color:var(--amber);}
+@media(max-width:600px){
+  .sector-grid{grid-template-columns:repeat(2,1fr);}
+  .sector-pct{font-size:14px;}
+}
 .fg-wrap{display:flex;gap:12px;padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;}
 .fg-left{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
 .fg-title{font-size:8px;color:var(--amber3);letter-spacing:2px;margin-bottom:6px;align-self:flex-start;}
@@ -562,6 +580,19 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
         <!-- Charts -->
         <div class="mkt-charts" id="mktCharts">
           <div class="empty"><div class="spin"></div><div class="empty-t">DANG TAI DU LIEU THI TRUONG...</div></div>
+        </div>
+
+        <!-- Sector Heatmap -->
+        <div class="sector-wrap">
+          <div class="sector-title">
+            ◈ SECTOR HEATMAP
+            <button class="cbtn" onclick="loadSector()" style="border-color:var(--amber3);color:var(--amber);font-size:8px;" id="sectorBtn">↺ TAI NGANH</button>
+            <span id="sectorInfo" style="font-size:8px;color:var(--gray2);"></span>
+          </div>
+          <div class="sector-grid" id="sectorGrid">
+            <div style="color:var(--gray2);font-size:9px;letter-spacing:1px;">Nhan "TAI NGANH" de xem heatmap...</div>
+          </div>
+          <div class="sector-detail" id="sectorDetail"></div>
         </div>
       </div>
     </div>
@@ -1166,6 +1197,90 @@ document.getElementById('aiInp').addEventListener('keydown',function(e){if(e.key
 var breadthPer = 60;
 var breadthLoaded = false;
 var breadthCharts = {};
+
+// ── SECTOR HEATMAP ───────────────────────────────────────────────────────
+var sectorData = [];
+var activeSector = null;
+
+function getSectorColor(pct) {
+  if(pct >= 3)  return {bg:'rgba(0,180,60,.85)',  text:'#fff'};
+  if(pct >= 1)  return {bg:'rgba(0,140,40,.75)',  text:'#fff'};
+  if(pct >= 0)  return {bg:'rgba(0,100,30,.6)',   text:'#aaffaa'};
+  if(pct >= -1) return {bg:'rgba(160,0,30,.6)',   text:'#ffaaaa'};
+  if(pct >= -3) return {bg:'rgba(200,0,40,.75)',  text:'#fff'};
+  return           {bg:'rgba(220,0,50,.9)',   text:'#fff'};
+}
+
+async function loadSector() {
+  var btn = document.getElementById('sectorBtn');
+  var grid = document.getElementById('sectorGrid');
+  btn.textContent = '⏳ DANG TAI...';
+  btn.disabled = true;
+  grid.innerHTML = '<div style="color:var(--gray2);font-size:9px;letter-spacing:1px;padding:8px;">Dang tai du lieu nganh...</div>';
+
+  try {
+    var r = await fetch('/api/sector');
+    var data = await r.json();
+    if(data.error) throw new Error(data.error);
+    sectorData = data.sectors;
+    document.getElementById('sectorInfo').textContent = data.total_stocks + ' ma';
+    renderSectorHeatmap();
+  } catch(e) {
+    grid.innerHTML = '<div style="color:var(--red);font-size:9px;">LOI: '+e.message+'</div>';
+  }
+  btn.textContent = '↺ TAI NGANH';
+  btn.disabled = false;
+}
+
+function renderSectorHeatmap() {
+  var grid = document.getElementById('sectorGrid');
+  if(!sectorData.length) return;
+  var html = '';
+  sectorData.forEach(function(s, idx) {
+    var c = getSectorColor(s.avg_pct);
+    var sign = s.avg_pct >= 0 ? '+' : '';
+    html += '<div class="sector-card" onclick="showSectorDetail('+idx+')" '
+      +'style="background:'+c.bg+';color:'+c.text+';">'
+      +'<div class="sector-name">'+s.name+'</div>'
+      +'<div class="sector-pct">'+sign+s.avg_pct+'%</div>'
+      +'<div class="sector-sub">'+s.up+'↑ '+s.down+'↓ | '+s.count+' ma</div>'
+      +'</div>';
+  });
+  grid.innerHTML = html;
+  // Hide detail if open
+  document.getElementById('sectorDetail').classList.remove('show');
+}
+
+function showSectorDetail(idx) {
+  var s = sectorData[idx];
+  if(!s) return;
+  var detail = document.getElementById('sectorDetail');
+
+  // Toggle
+  if(activeSector === idx && detail.classList.contains('show')) {
+    detail.classList.remove('show');
+    activeSector = null;
+    return;
+  }
+  activeSector = idx;
+  detail.classList.add('show');
+
+  var c = getSectorColor(s.avg_pct);
+  var html = '<div class="sector-detail-title">'+s.name.toUpperCase()+' — '+s.stocks.length+' MA</div>'
+    +'<div class="sector-stocks">';
+  s.stocks.forEach(function(st) {
+    var sc = getSectorColor(st.pct);
+    var sign = st.pct >= 0 ? '+' : '';
+    html += '<div class="sector-stock" onclick="selectStock(\''+st.sym+'\')" '
+      +'style="background:'+sc.bg+';color:'+sc.text+';">'
+      +'<div style="font-size:9px;font-weight:700;">'+st.sym+'</div>'
+      +'<div style="font-size:8px;">'+sign+st.pct+'%</div>'
+      +'<div style="font-size:7px;opacity:.7;">'+st.close.toLocaleString()+'</div>'
+      +'</div>';
+  });
+  html += '</div>';
+  detail.innerHTML = html;
+}
 
 function setBreadthPer(p, btn) {
   breadthPer = p;
@@ -1837,5 +1952,3 @@ setInterval(async function(){
 </script>
 </body>
 </html>
- 
- 

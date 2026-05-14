@@ -745,6 +745,88 @@ def get_breadth():
         return jsonify({'error': str(e)}), 500
 
 
+# ── SECTOR HEATMAP ──────────────────────────────────────────────────────────
+SECTORS = {
+    'Ngan hang': ['ACB','BID','CTG','EIB','HDB','LPB','MBB','MSB','NAB','NVB','OCB','SHB','SSB','STB','TCB','TPB','VCB','VIB','VPB'],
+    'Bat dong san': ['BCG','CEO','CII','DIG','DXG','DXS','GEX','HDC','HDG','HQC','IJC','KBC','KDH','KHG','LDG','LGC','NLG','NVL','NVT','PDR','PHR','QCG','SCR','SJS','SZC','TDH','VHM','VIC','VRE'],
+    'Chung khoan': ['BSR','CTS','FTS','HBS','HCM','MBS','ORS','PSI','SBS','SSI','TVS','VCI','VDS','VIX','VND','VPS'],
+    'Thep': ['HPG','HSG','NKG','POM','SMC','TLH','TVN'],
+    'Dau khi': ['BSR','CNG','GAS','OIL','PGC','PGD','PGS','PLX','POW','PVC','PVD','PVI','PVP','PVS','PVT'],
+    'Hang tieu dung': ['MCH','MSN','MWG','PNJ','SAB','VNM'],
+    'Cong nghe': ['CMG','ELC','FPT','ICT','SAM','ST8','VGI'],
+    'Xay dung': ['CTD','CTI','CTR','FCN','HBC','HTN','LCG','PC1','REE','SC5','VCG'],
+    'Thuc pham': ['ANV','DBC','HAG','HNG','IDI','LSS','MSN','NAF','PAN','QNS','SAF','TAC','VNM'],
+    'Van tai': ['GMD','HAH','HHR','HVN','PJT','SCS','SGN','TMS','VIP','VOS','VSC'],
+    'Dien': ['GEG','NT2','POW','REE','SBA','TBC','TV2','VSH'],
+    'Hoa chat': ['CSV','DCM','DGC','DPM','LAS','PAC','PHC','PLC','SFG'],
+    'Det may': ['EVE','GIL','MSH','STK','TCM','TNG','VGT'],
+    'Duoc pham': ['DBD','DHT','IMP','OPC','TRA','VMD'],
+}
+
+@app.route('/api/sector')
+def get_sector():
+    try:
+        import requests as req
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        headers = {'Authorization': 'Bearer ' + FIREANT_TOKEN}
+
+        def get_price(sym):
+            try:
+                url = f'https://restv2.fireant.vn/symbols/{sym}/historical-quotes'
+                r = req.get(url, headers=headers,
+                           params={'startDate': (datetime.today()-timedelta(days=5)).strftime('%Y-%m-%d'),
+                                   'endDate': datetime.today().strftime('%Y-%m-%d'),
+                                   'offset':0,'limit':5,'type':1},
+                           timeout=8)
+                if r.status_code != 200: return None
+                data = r.json()
+                if not data or len(data) < 2: return None
+                data = list(reversed(data))
+                last  = data[-1]
+                prev  = data[-2]
+                pct = (last['priceClose'] - prev['priceClose']) / prev['priceClose'] * 100
+                return {'sym': sym, 'close': last['priceClose'], 'pct': round(pct, 2),
+                        'vol': last.get('dealVolume', 0)}
+            except: return None
+
+        # Get all symbols
+        all_syms = list(set([s for syms in SECTORS.values() for s in syms]))
+        results = {}
+        with ThreadPoolExecutor(max_workers=30) as ex:
+            futures = {ex.submit(get_price, s): s for s in all_syms}
+            for f in as_completed(futures):
+                r = f.result()
+                if r: results[r['sym']] = r
+
+        # Build sector data
+        sector_data = []
+        for sector, syms in SECTORS.items():
+            stocks = []
+            total_pct = 0
+            count = 0
+            for sym in syms:
+                if sym in results:
+                    stocks.append(results[sym])
+                    total_pct += results[sym]['pct']
+                    count += 1
+            if count > 0:
+                sector_data.append({
+                    'name': sector,
+                    'avg_pct': round(total_pct / count, 2),
+                    'stocks': sorted(stocks, key=lambda x: x['pct'], reverse=True),
+                    'count': count,
+                    'up': sum(1 for s in stocks if s['pct'] > 0),
+                    'down': sum(1 for s in stocks if s['pct'] < 0),
+                })
+
+        sector_data.sort(key=lambda x: x['avg_pct'], reverse=True)
+        return jsonify({'sectors': sector_data, 'total_stocks': len(results)})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("="*50)
@@ -752,5 +834,4 @@ if __name__ == '__main__':
     print(f"  http://localhost:{port}")
     print("="*50)
     app.run(host='0.0.0.0', port=port, debug=False)
- 
  
