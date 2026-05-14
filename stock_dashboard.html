@@ -1417,11 +1417,22 @@ async function syncPortfolio() {
           pfBinId = newId;
           localStorage.setItem('qs_bin_id', newId);
           localStorage.setItem('qs_bin_'+pin, newId);
-          toast('Tao cloud thanh cong! PIN: '+pin);
-          // Show bin ID for user to note
-          setTimeout(function(){
-            alert('PIN: '+pin+'\nBin ID: '+newId+'\n\nLuu thong tin nay de dung tren dien thoai!\nTren DT: nhap PIN va dan Bin ID vao.');
-          }, 500);
+          toast('Tao cloud thanh cong!');
+          // Show QR code for easy mobile sync
+          var syncUrl = location.origin + location.pathname + '?pin='+pin+'&bid='+newId;
+          var qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent(syncUrl);
+          var qrModal = document.createElement('div');
+          qrModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;display:flex;align-items:center;justify-content:center;';
+          qrModal.innerHTML = '<div style="background:#1a1a1a;border:1px solid var(--amber);padding:24px;width:320px;font-family:var(--mono);text-align:center;">'
+            +'<div style="font-size:11px;color:var(--amber);letter-spacing:2px;margin-bottom:8px;">☁ SYNC THANH CONG</div>'
+            +'<div style="font-size:9px;color:var(--gray1);margin-bottom:12px;">Quet QR bang dien thoai de dong bo danh muc:</div>'
+            +'<img src="'+qrUrl+'" style="width:200px;height:200px;border:4px solid white;display:block;margin:0 auto 12px;">'
+            +'<div style="font-size:10px;color:var(--amber);margin-bottom:4px;">PIN: <b>'+pin+'</b></div>'
+            +'<div style="font-size:8px;color:var(--gray2);margin-bottom:14px;">Hoac vao DT: nhap PIN + Bin ID ben duoi</div>'
+            +'<div style="font-size:8px;color:var(--gray2);word-break:break-all;background:#111;padding:6px;margin-bottom:14px;">'+newId+'</div>'
+            +'<button onclick="this.closest(\'div[style]\').remove()" style="background:var(--amber3);border:none;color:black;font-family:var(--mono);font-size:10px;font-weight:700;padding:8px 24px;cursor:pointer;letter-spacing:1px;">DONG</button>'
+            +'</div>';
+          document.body.appendChild(qrModal);
           return;
         }
       }
@@ -1551,6 +1562,32 @@ function formatMoney(v){
   return Math.round(v).toLocaleString();}
 
 async function init(){
+  // Handle QR code URL params
+  var urlParams = new URLSearchParams(window.location.search);
+  var qrPin = urlParams.get('pin');
+  var qrBid = urlParams.get('bid');
+  if(qrPin && qrBid) {
+    pfPin = qrPin;
+    pfBinId = qrBid;
+    localStorage.setItem('qs_pin', qrPin);
+    localStorage.setItem('qs_bin_id', qrBid);
+    localStorage.setItem('qs_bin_'+qrPin, qrBid);
+    // Load portfolio from cloud
+    try {
+      var r = await fetch('https://api.jsonbin.io/v3/b/'+qrBid+'/latest', {headers:{'X-Master-Key':JSONBIN_KEY}});
+      if(r.ok) {
+        var j = await r.json();
+        if(j.record && j.record.portfolio) {
+          var pdata = j.record.portfolio;
+          portfolio = pdata.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,currentPrice:null};});
+          localStorage.setItem('qs_portfolio', JSON.stringify(pdata));
+          toast('Da tai danh muc tu QR! '+portfolio.length+' ma.');
+        }
+      }
+    } catch(e) {}
+    // Clean URL
+    window.history.replaceState({}, '', location.pathname);
+  }
   // Event listeners
   var sm=document.getElementById('scanModal');
   if(sm)sm.addEventListener('click',function(e){if(e.target===this)closeScan();});
