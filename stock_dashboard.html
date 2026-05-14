@@ -222,6 +222,46 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
   .mkt-chart-canvas2{height:90px;}
 }
 
+/* PORTFOLIO */
+.pf-wrap{flex:1;display:flex;flex-direction:column;overflow-y:auto;background:var(--bg1);}
+.pf-wrap::-webkit-scrollbar{width:2px;}
+.pf-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
+.pf-sum-card{background:var(--bg3);border:1px solid var(--border);padding:8px 10px;position:relative;}
+.pf-sum-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--amber3);}
+.pf-sum-lbl{font-size:7px;color:var(--gray2);letter-spacing:1px;margin-bottom:3px;}
+.pf-sum-val{font-size:14px;font-weight:700;font-family:var(--tech);}
+.pf-form{padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
+.pf-form-title{font-size:8px;color:var(--amber3);letter-spacing:2px;margin-bottom:6px;}
+.pf-form-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+.pf-inp-grp{display:flex;flex-direction:column;gap:3px;}
+.pf-lbl{font-size:7px;color:var(--gray2);letter-spacing:1px;}
+.pf-inp{background:var(--bg3);border:1px solid var(--border2);color:var(--amber);font-family:var(--mono);font-size:11px;padding:5px 8px;outline:none;width:110px;text-transform:uppercase;}
+.pf-inp:focus{border-color:var(--amber);}
+.pf-inp::placeholder{color:var(--gray2);text-transform:none;}
+.pf-add-btn{background:var(--amber3);border:none;color:var(--black);font-family:var(--mono);font-size:10px;font-weight:700;padding:6px 14px;cursor:pointer;letter-spacing:1px;white-space:nowrap;}
+.pf-add-btn:hover{background:var(--amber);}
+.pf-table-wrap{flex-shrink:0;overflow-x:auto;padding:10px 12px;}
+.pf-table{width:100%;border-collapse:collapse;font-family:var(--mono);}
+.pf-table th{font-size:8px;color:var(--amber3);letter-spacing:1px;padding:5px 8px;border-bottom:1px solid var(--border);text-align:right;background:var(--bg2);white-space:nowrap;}
+.pf-table th:first-child{text-align:left;}
+.pf-table td{font-size:11px;padding:7px 8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+.pf-table td:first-child{text-align:left;color:var(--amber);font-weight:700;cursor:pointer;}
+.pf-table td:first-child:hover{text-decoration:underline;}
+.pf-table tr:hover td{background:var(--bg3);}
+.pf-del-btn{background:transparent;border:1px solid rgba(255,34,68,.4);color:var(--red);font-size:9px;padding:2px 6px;cursor:pointer;font-family:var(--mono);}
+.pf-del-btn:hover{background:var(--red);color:white;}
+.pf-chart-wrap{padding:10px 12px;flex-shrink:0;}
+.pf-chart-title{font-size:8px;color:var(--amber3);letter-spacing:2px;margin-bottom:8px;}
+.pf-legend-item{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.pf-legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+@media(max-width:600px){
+  .pf-summary{grid-template-columns:repeat(2,1fr);}
+  .pf-form-row{flex-direction:column;}
+  .pf-inp{width:100%;}
+  .pf-table{font-size:10px;}
+  .pf-sum-val{font-size:12px;}
+}
+
 .toast.show{opacity:1;transform:translateY(0);}
 .toast.err{border-left-color:var(--red);}
 
@@ -343,6 +383,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
       <button class="tab-btn" onclick="switchTab('fund',this)">TAI CHINH</button>
       <button class="tab-btn" onclick="switchTab('ai',this)">PHAN TICH AI</button>
       <button class="tab-btn" onclick="switchTab('market',this);loadBreadth()">MARKET</button>
+      <button class="tab-btn" onclick="switchTab('portfolio',this);refreshPortfolioPrices()">DANH MUC</button>
       <div class="tb-sep"></div>
       <div class="cgrp" id="typeG">
         <button class="cbtn active" onclick="setType('candle',this)">Nen</button>
@@ -486,6 +527,62 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
         <!-- Charts -->
         <div class="mkt-charts" id="mktCharts">
           <div class="empty"><div class="spin"></div><div class="empty-t">DANG TAI DU LIEU THI TRUONG...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PORTFOLIO PANEL -->
+    <div class="panel" id="panel-portfolio">
+      <div class="pf-wrap">
+        <!-- Total Summary -->
+        <div class="pf-summary">
+          <div class="pf-sum-card">
+            <div class="pf-sum-lbl">TONG GIA TRI</div>
+            <div class="pf-sum-val" id="pfTotalVal">—</div>
+          </div>
+          <div class="pf-sum-card">
+            <div class="pf-sum-lbl">VON DAU TU</div>
+            <div class="pf-sum-val" id="pfTotalCost">—</div>
+          </div>
+          <div class="pf-sum-card">
+            <div class="pf-sum-lbl">LAI/LO</div>
+            <div class="pf-sum-val" id="pfTotalPL">—</div>
+          </div>
+          <div class="pf-sum-card">
+            <div class="pf-sum-lbl">% LAI/LO</div>
+            <div class="pf-sum-val" id="pfTotalPct">—</div>
+          </div>
+        </div>
+        <!-- Add form -->
+        <div class="pf-form">
+          <div class="pf-form-title">◈ THEM CO PHIEU</div>
+          <div class="pf-form-row">
+            <div class="pf-inp-grp"><label class="pf-lbl">MA CP</label><input class="pf-inp" id="pfSym" placeholder="VNM" maxlength="10"></div>
+            <div class="pf-inp-grp"><label class="pf-lbl">GIA VON (VND)</label><input class="pf-inp" id="pfCost" placeholder="50000" type="number"></div>
+            <div class="pf-inp-grp"><label class="pf-lbl">SO LUONG (CP)</label><input class="pf-inp" id="pfQty" placeholder="1000" type="number"></div>
+            <button class="pf-add-btn" onclick="addPortfolio()">+ THEM</button>
+            <button class="pf-add-btn" onclick="refreshPortfolioPrices()" style="background:var(--bg3);border:1px solid var(--amber3);color:var(--amber);">↺ GIA MOI</button>
+          </div>
+        </div>
+        <!-- Table -->
+        <div class="pf-table-wrap">
+          <table class="pf-table">
+            <thead><tr>
+              <th style="text-align:left;">MA</th><th>GIA VON</th><th>GIA TT</th>
+              <th>SL</th><th>GIA TRI</th><th>LAI/LO</th><th>%</th><th>TY TRONG</th><th></th>
+            </tr></thead>
+            <tbody id="pfBody">
+              <tr><td colspan="9" style="text-align:center;color:var(--gray2);padding:20px;font-size:10px;letter-spacing:1px;">CHUA CO CO PHIEU — THEM MA DE BAT DAU</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Pie -->
+        <div class="pf-chart-wrap">
+          <div class="pf-chart-title">◈ TY TRONG DANH MUC</div>
+          <div style="display:flex;gap:16px;align-items:center;">
+            <canvas id="pfPie" style="max-width:180px;max-height:180px;"></canvas>
+            <div id="pfLegend" style="flex:1;font-size:10px;"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -710,7 +807,6 @@ function updateAlerts(sl,macdR,rsiA,mfiA){
   if(sc>=2){op.textContent='MUA';op.className='pill pill-buy';}else if(sc<=-2){op.textContent='BAN';op.className='pill pill-sell';}else{op.textContent='GIU';op.className='pill pill-hold';}}
 
 function destroyCharts(){Object.values(charts).forEach(function(c){try{c.destroy();}catch(e){}});charts={};}
-function switchTab(n,btn){document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active');});document.getElementById('panel-'+n).classList.add('active');}
 function setType(t,btn){chartType=t;document.querySelectorAll('#typeG .cbtn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');if(curSym)renderCharts();}
 function setMode(m,btn){chartMode=m;document.querySelectorAll('#modeG .cbtn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');document.getElementById('vpaLegend').style.display=m==='vpa'?'flex':'none';if(curSym)renderCharts();}
 function setPer(p,btn){period=p;document.querySelectorAll('#perG .cbtn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');if(curSym)renderCharts();}
@@ -1004,7 +1100,6 @@ function renderScan(data){
 
 function setScanSort(by){scanSort=by;renderScan();}
 function pickScan(sym){closeScan();if(watchlist.indexOf(sym)<0){watchlist.push(sym);saveWL();}selectStock(sym);}
-document.getElementById('scanModal').addEventListener('click',function(e){if(e.target===this)closeScan();});
 
 function toast(msg,err){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(err?' err':'');setTimeout(function(){t.className='toast';},2800);}
 document.getElementById('addInp').addEventListener('keydown',function(e){if(e.key==='Enter')addStock();});
@@ -1157,7 +1252,183 @@ function renderBreadthCharts(data) {
   });
 }
 
+// ── PORTFOLIO ────────────────────────────────────────────────────────────
+var portfolio = JSON.parse(localStorage.getItem('qs_portfolio') || '[]');
+var pfChart = null;
+
+var PF_COLORS = ['#ff9500','#00cc44','#0088ff','#ff2244','#a78bfa','#00ccff','#ffd700','#ff69b4','#76ff03','#1de9b6'];
+
+function switchTab(n, btn) {
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active');});
+  var panel = document.getElementById('panel-'+n);
+  if(panel) panel.classList.add('active');
+}
+
+async function addPortfolio() {
+  var sym  = document.getElementById('pfSym').value.trim().toUpperCase();
+  var cost = parseFloat(document.getElementById('pfCost').value);
+  var qty  = parseFloat(document.getElementById('pfQty').value);
+  if(!sym || !cost || !qty) { toast('Nhap du thong tin!', true); return; }
+
+  // Check duplicate
+  if(portfolio.find(function(p){return p.sym===sym;})) {
+    toast(sym+' da co trong danh muc!', true); return;
+  }
+
+  // Get current price
+  toast('Dang lay gia '+sym+'...');
+  var price = null;
+  if(priceCache[sym] && priceCache[sym].length > 0) {
+    price = priceCache[sym][priceCache[sym].length-1].close;
+  } else {
+    try {
+      var r = await fetch(API+'/history/'+sym+'?days=5');
+      var j = await r.json();
+      if(j.data && j.data.length > 0) {
+        price = j.data[j.data.length-1].close;
+        priceCache[sym] = j.data;
+      }
+    } catch(e) {}
+  }
+
+  portfolio.push({ sym: sym, cost: cost, qty: qty, currentPrice: price });
+  savePortfolio();
+  document.getElementById('pfSym').value  = '';
+  document.getElementById('pfCost').value = '';
+  document.getElementById('pfQty').value  = '';
+  renderPortfolio();
+  toast(sym+' da them vao danh muc!');}
+
+function savePortfolio() { localStorage.setItem('qs_portfolio', JSON.stringify(portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty};}))); }
+
+function removePortfolio(sym) {
+  portfolio = portfolio.filter(function(p){return p.sym !== sym;});
+  savePortfolio();
+  renderPortfolio();}
+
+async function refreshPortfolioPrices() {
+  for(var i=0; i<portfolio.length; i++) {
+    var sym = portfolio[i].sym;
+    try {
+      var r = await fetch(API+'/history/'+sym+'?days=5');
+      var j = await r.json();
+      if(j.data && j.data.length > 0) {
+        portfolio[i].currentPrice = j.data[j.data.length-1].close;
+        priceCache[sym] = j.data;
+      }
+    } catch(e) {}
+  }
+  renderPortfolio();}
+
+function renderPortfolio() {
+  var body = document.getElementById('pfBody');
+  if(!portfolio.length) {
+    body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--gray2);padding:20px;font-size:10px;letter-spacing:1px;">CHUA CO CO PHIEU — THEM MA DE BAT DAU</td></tr>';
+    document.getElementById('pfTotalVal').textContent  = '—';
+    document.getElementById('pfTotalCost').textContent = '—';
+    document.getElementById('pfTotalPL').textContent   = '—';
+    document.getElementById('pfTotalPct').textContent  = '—';
+    if(pfChart){pfChart.destroy();pfChart=null;}
+    return;}
+
+  var totalVal=0, totalCost=0;
+  portfolio.forEach(function(p){
+    var val = p.currentPrice ? p.currentPrice*p.qty : 0;
+    var cost = p.cost*p.qty;
+    totalVal  += val;
+    totalCost += cost;});
+
+  var totalPL  = totalVal - totalCost;
+  var totalPct = totalCost > 0 ? totalPL/totalCost*100 : 0;
+
+  // Summary
+  var plColor = totalPL >= 0 ? 'var(--green2)' : 'var(--red2)';
+  document.getElementById('pfTotalVal').textContent  = formatMoney(totalVal);
+  document.getElementById('pfTotalCost').textContent = formatMoney(totalCost);
+  document.getElementById('pfTotalPL').textContent   = (totalPL>=0?'+':'')+formatMoney(totalPL);
+  document.getElementById('pfTotalPL').style.color   = plColor;
+  document.getElementById('pfTotalPct').textContent  = (totalPct>=0?'+':'')+totalPct.toFixed(2)+'%';
+  document.getElementById('pfTotalPct').style.color  = plColor;
+
+  // Table
+  var html = '';
+  portfolio.forEach(function(p, idx) {
+    var price = p.currentPrice;
+    var val   = price ? price*p.qty : null;
+    var cost  = p.cost*p.qty;
+    var pl    = val !== null ? val-cost : null;
+    var pct   = pl !== null && cost > 0 ? pl/cost*100 : null;
+    var weight = val !== null && totalVal > 0 ? val/totalVal*100 : 0;
+    var plc   = pl >= 0 ? 'var(--green)' : 'var(--red)';
+    var priceTxt = price ? price.toLocaleString() : '...';
+    var valTxt   = val   ? formatMoney(val)   : '...';
+    var plTxt    = pl !== null ? (pl>=0?'+':'')+formatMoney(pl) : '...';
+    var pctTxt   = pct !== null ? (pct>=0?'+':'')+pct.toFixed(2)+'%' : '...';
+    var dot      = PF_COLORS[idx % PF_COLORS.length];
+
+    html += '<tr>'
+      + '<td onclick="selectStock(\''+p.sym+'\')" style="display:flex;align-items:center;gap:5px;">'
+      + '<span style="width:8px;height:8px;background:'+dot+';border-radius:1px;display:inline-block;flex-shrink:0;"></span>'
+      + p.sym+'</td>'
+      + '<td>'+p.cost.toLocaleString()+'</td>'
+      + '<td style="color:'+(price?(p.currentPrice>=p.cost?'var(--green)':'var(--red)'):'var(--gray1)')+'">'+priceTxt+'</td>'
+      + '<td>'+p.qty.toLocaleString()+'</td>'
+      + '<td>'+valTxt+'</td>'
+      + '<td style="color:'+plc+'">'+plTxt+'</td>'
+      + '<td style="color:'+plc+'">'+pctTxt+'</td>'
+      + '<td style="color:var(--amber)">'+weight.toFixed(1)+'%</td>'
+      + '<td><button class="pf-del-btn" onclick="removePortfolio(\''+p.sym+'\')">✕</button></td>'
+      + '</tr>';});
+  body.innerHTML = html;
+
+  // Pie chart
+  renderPfPie(totalVal);}
+
+function renderPfPie(totalVal) {
+  if(pfChart){pfChart.destroy();pfChart=null;}
+  if(!portfolio.length||!document.getElementById('pfPie'))return;
+
+  var labels=[], vals=[], colors=[];
+  portfolio.forEach(function(p,i){
+    var val = p.currentPrice ? p.currentPrice*p.qty : p.cost*p.qty;
+    labels.push(p.sym); vals.push(val); colors.push(PF_COLORS[i%PF_COLORS.length]);});
+
+  pfChart = new Chart(document.getElementById('pfPie'),{
+    type:'doughnut',
+    data:{labels:labels,datasets:[{data:vals,backgroundColor:colors,borderColor:'var(--bg1)',borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:true,animation:false,
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'#111',borderColor:'#333',borderWidth:1,
+        callbacks:{label:function(ctx){var pct=(ctx.raw/totalVal*100).toFixed(1);return ctx.label+': '+formatMoney(ctx.raw)+' ('+pct+'%)';}}}}}});
+
+  // Legend
+  var leg='';
+  portfolio.forEach(function(p,i){
+    var val=p.currentPrice?p.currentPrice*p.qty:p.cost*p.qty;
+    var pct=totalVal>0?val/totalVal*100:0;
+    var pl=p.currentPrice?(p.currentPrice-p.cost)/p.cost*100:0;
+    var plc=pl>=0?'var(--green)':'var(--red)';
+    leg+='<div class="pf-legend-item">'
+      +'<div class="pf-legend-dot" style="background:'+PF_COLORS[i%PF_COLORS.length]+'"></div>'
+      +'<span style="color:var(--amber);font-weight:700;min-width:40px;">'+p.sym+'</span>'
+      +'<span style="color:var(--gray1);">'+pct.toFixed(1)+'%</span>'
+      +'<span style="color:'+plc+';margin-left:6px;">'+(pl>=0?'+':'')+pl.toFixed(2)+'%</span>'
+      +'</div>';});
+  document.getElementById('pfLegend').innerHTML=leg;}
+
+function formatMoney(v){
+  if(!v&&v!==0)return'—';
+  if(Math.abs(v)>=1e9) return (v/1e9).toFixed(2)+'B';
+  if(Math.abs(v)>=1e6) return (v/1e6).toFixed(2)+'M';
+  return Math.round(v).toLocaleString();}
+
 async function init(){
+  // Event listeners
+  var sm=document.getElementById('scanModal');
+  if(sm)sm.addEventListener('click',function(e){if(e.target===this)closeScan();});
+  // Load portfolio prices if any saved
+  if(portfolio.length > 0) refreshPortfolioPrices();
   renderWL();
   document.getElementById('vpaLegend').style.display='flex';
   var online=await checkServer();
@@ -1176,3 +1447,4 @@ setInterval(async function(){
 </script>
 </body>
 </html>
+ 
