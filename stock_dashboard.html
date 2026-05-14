@@ -480,6 +480,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
         <button class="cbtn active" onclick="togInd('trend',this)">TREND</button>
       </div>
       <button class="scan-tb" onclick="openScan()">◈ SCAN</button>
+      <button class="scan-tb" onclick="openCompare()" style="border-color:var(--cyan);color:var(--cyan);">⇄ SO SANH</button>
     </div>
 
     <!-- VPA LEGEND -->
@@ -751,6 +752,50 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
     </div>
   </div>
 </div>
+<!-- COMPARE MODAL -->
+<div class="moverlay" id="compareModal">
+  <div class="modal" style="max-width:780px;">
+    <div class="mhdr">
+      <div><div class="mtitle">⇄ SO SANH TUONG QUAN</div><div class="msub">SO SANH HIEU SUAT NHIEU MA TREN CUNG BIEU DO</div></div>
+      <button class="mclose" onclick="closeCompare()">✕</button>
+    </div>
+    <div class="mbody" style="padding:12px;">
+      <!-- Inputs -->
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <label style="font-size:7px;color:var(--gray2);letter-spacing:1px;">MA 1 (chinh)</label>
+          <input id="cmp1" style="background:var(--bg3);border:1px solid var(--amber);color:var(--amber);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none;width:80px;text-transform:uppercase;" placeholder="VNM">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <label style="font-size:7px;color:var(--gray2);letter-spacing:1px;">MA 2</label>
+          <input id="cmp2" style="background:var(--bg3);border:1px solid var(--cyan);color:var(--cyan);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none;width:80px;text-transform:uppercase;" placeholder="HPG">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <label style="font-size:7px;color:var(--gray2);letter-spacing:1px;">MA 3 (tuy chon)</label>
+          <input id="cmp3" style="background:var(--bg3);border:1px solid var(--purple);color:var(--purple);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none;width:80px;text-transform:uppercase;" placeholder="VCB">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <label style="font-size:7px;color:var(--gray2);letter-spacing:1px;">PERIOD</label>
+          <div class="cgrp" id="cmpPerG">
+            <button class="cbtn" onclick="setCmpPer(20,this)">1T</button>
+            <button class="cbtn active" onclick="setCmpPer(60,this)">3T</button>
+            <button class="cbtn" onclick="setCmpPer(120,this)">6T</button>
+            <button class="cbtn" onclick="setCmpPer(250,this)">1N</button>
+          </div>
+        </div>
+        <button onclick="runCompare()" style="background:var(--amber3);border:none;color:var(--black);font-family:var(--mono);font-size:10px;font-weight:700;padding:6px 16px;cursor:pointer;letter-spacing:1px;">▶ SO SANH</button>
+      </div>
+      <!-- Chart -->
+      <div id="cmpChartWrap" style="background:var(--bg2);border:1px solid var(--border);padding:10px;margin-bottom:10px;display:none;">
+        <div style="font-size:8px;color:var(--amber3);letter-spacing:1px;margin-bottom:6px;">◈ HIEU SUAT TUONG DOI (%) — goc = 0%</div>
+        <div style="height:220px;position:relative;"><canvas id="cmpChart"></canvas></div>
+      </div>
+      <!-- Correlation stats -->
+      <div id="cmpStats"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1479,6 +1524,154 @@ function renderVPAScan(data) {
   html += renderGroup(mixed, '◈ TIN HIEU HON HOP', 'var(--amber2)');
   body.innerHTML = html;
 }
+
+// ── COMPARE / CORRELATION ─────────────────────────────────────────────────
+var cmpPer = 60, cmpChart = null;
+
+function setCmpPer(p, btn) {
+  cmpPer = p;
+  document.querySelectorAll('#cmpPerG .cbtn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+}
+
+function openCompare() {
+  document.getElementById('compareModal').classList.add('show');
+  // Pre-fill with current symbol
+  if(curSym) document.getElementById('cmp1').value = curSym;
+}
+function closeCompare() {
+  document.getElementById('compareModal').classList.remove('show');
+}
+
+async function runCompare() {
+  var s1 = document.getElementById('cmp1').value.trim().toUpperCase();
+  var s2 = document.getElementById('cmp2').value.trim().toUpperCase();
+  var s3 = document.getElementById('cmp3').value.trim().toUpperCase();
+  if(!s1 || !s2) { toast('Nhap it nhat 2 ma!', true); return; }
+
+  var syms = [s1, s2];
+  if(s3) syms.push(s3);
+
+  toast('Dang tai du lieu...');
+
+  // Fetch all symbols
+  var dataMap = {};
+  await Promise.all(syms.map(async function(sym) {
+    try {
+      var r = await fetch(API+'/history/'+sym+'?days='+(cmpPer+10));
+      var j = await r.json();
+      if(j.data && j.data.length > 0) dataMap[sym] = j.data;
+    } catch(e) {}
+  }));
+
+  // Find common dates (align data)
+  var allDates = Object.values(dataMap).map(function(d){return d.map(function(x){return x.date;});});
+  var commonDates = allDates[0];
+  for(var i=1;i<allDates.length;i++) {
+    commonDates = commonDates.filter(function(d){return allDates[i].indexOf(d)>=0;});
+  }
+  commonDates = commonDates.slice(-cmpPer);
+
+  if(commonDates.length < 5) { toast('Khong du du lieu chung!', true); return; }
+
+  // Build % return series (base = 0 at first common date)
+  var colors = ['#ff9500','#00ccff','#a78bfa'];
+  var datasets = [];
+  var priceData = {};
+
+  syms.forEach(function(sym, idx) {
+    if(!dataMap[sym]) return;
+    var d = dataMap[sym].filter(function(x){return commonDates.indexOf(x.date)>=0;});
+    if(!d.length) return;
+    var base = d[0].close;
+    var pcts = d.map(function(x){return round2((x.close-base)/base*100);});
+    priceData[sym] = d.map(function(x){return x.close;});
+    datasets.push({
+      label: sym,
+      data: pcts,
+      borderColor: colors[idx],
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: false,
+      tension: .2,
+    });
+  });
+
+  // Add zero line
+  datasets.push({
+    label: 'Base 0%',
+    data: new Array(commonDates.length).fill(0),
+    borderColor: 'rgba(255,255,255,.2)',
+    borderWidth: 1,
+    borderDash: [4,4],
+    pointRadius: 0,
+    fill: false,
+  });
+
+  var labels = commonDates.map(function(d){var p=d.split('-');return p[2]+'/'+p[1];});
+
+  // Draw chart
+  document.getElementById('cmpChartWrap').style.display='block';
+  if(cmpChart){try{cmpChart.destroy();}catch(e){}}
+  var ctx = document.getElementById('cmpChart');
+  cmpChart = new Chart(ctx, {
+    type: 'line',
+    data: {labels: labels, datasets: datasets},
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{legend:{display:true,labels:{color:'#888',font:{family:"'Roboto Mono'",size:9},boxWidth:10}},
+        tooltip:{backgroundColor:'#111',borderColor:'#333',borderWidth:1,bodyFont:{family:"'Roboto Mono'",size:9},
+          callbacks:{label:function(ctx){return ctx.dataset.label+': '+(ctx.raw>=0?'+':'')+ctx.raw+'%';}}}},
+      scales:{
+        x:{ticks:{color:'#555',font:{family:"'Roboto Mono'",size:8},maxTicksLimit:12,maxRotation:30},grid:{color:'rgba(42,42,42,.8)'}},
+        y:{position:'right',ticks:{color:'#555',font:{family:"'Roboto Mono'",size:8},callback:function(v){return(v>=0?'+':'')+v+'%';}},grid:{color:'rgba(42,42,42,.8)'}}
+      }
+    }
+  });
+
+  // Correlation stats
+  function pearson(a, b) {
+    var n=a.length, ma=a.reduce(function(s,v){return s+v;},0)/n, mb=b.reduce(function(s,v){return s+v;},0)/n;
+    var num=0,da=0,db=0;
+    for(var i=0;i<n;i++){num+=(a[i]-ma)*(b[i]-mb);da+=(a[i]-ma)**2;db+=(b[i]-mb)**2;}
+    return da&&db?round2(num/Math.sqrt(da*db)):0;
+  }
+
+  var statsHtml = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">';
+  var validSyms = syms.filter(function(s){return priceData[s];});
+
+  // Performance summary
+  validSyms.forEach(function(sym, idx) {
+    var d = priceData[sym];
+    var pct = round2((d[d.length-1]-d[0])/d[0]*100);
+    var c = colors[idx];
+    statsHtml += '<div style="background:var(--bg2);border:1px solid var(--border);border-top:2px solid '+c+';padding:8px 12px;min-width:120px;">'
+      +'<div style="font-size:9px;color:'+c+';font-weight:700;margin-bottom:4px;">'+sym+'</div>'
+      +'<div style="font-size:14px;font-weight:700;color:'+(pct>=0?'var(--green2)':'var(--red2)')+';">'+(pct>=0?'+':'')+pct+'%</div>'
+      +'<div style="font-size:8px;color:var(--gray2);">'+cmpPer+' phien</div>'
+      +'</div>';
+  });
+
+  // Correlation matrix
+  if(validSyms.length >= 2) {
+    for(var a=0;a<validSyms.length;a++) {
+      for(var b=a+1;b<validSyms.length;b++) {
+        var corr = pearson(priceData[validSyms[a]], priceData[validSyms[b]]);
+        var cc = corr>0.7?'var(--green)':corr>0.3?'var(--amber)':corr<-0.3?'var(--red)':'var(--gray1)';
+        var desc = corr>0.7?'Tuong quan cao':corr>0.3?'Tuong quan trung binh':corr<-0.7?'Nghich tuong quan':corr<-0.3?'Nghich nhe':'Doc lap';
+        statsHtml += '<div style="background:var(--bg2);border:1px solid var(--border);padding:8px 12px;min-width:160px;">'
+          +'<div style="font-size:8px;color:var(--gray2);margin-bottom:4px;">'+validSyms[a]+' vs '+validSyms[b]+'</div>'
+          +'<div style="font-size:16px;font-weight:700;color:'+cc+';">r = '+corr+'</div>'
+          +'<div style="font-size:8px;color:'+cc+';">'+desc+'</div>'
+          +'</div>';
+      }
+    }
+  }
+  statsHtml += '</div>';
+  document.getElementById('cmpStats').innerHTML = statsHtml;
+}
+
+function round2(v){return Math.round(v*100)/100;}
 
 function setScanSort(by){scanSort=by;renderScan();}
 function pickScan(sym){closeScan();if(watchlist.indexOf(sym)<0){watchlist.push(sym);saveWL();}selectStock(sym);}
@@ -2226,6 +2419,8 @@ async function init(){
   // Event listeners
   var sm=document.getElementById('scanModal');
   if(sm)sm.addEventListener('click',function(e){if(e.target===this)closeScan();});
+  var cm=document.getElementById('compareModal');
+  if(cm)cm.addEventListener('click',function(e){if(e.target===this)closeCompare();});
   // Load portfolio prices if any saved
   if(portfolio.length > 0) refreshPortfolioPrices();
   renderWL();
@@ -2246,3 +2441,4 @@ setInterval(async function(){
 </script>
 </body>
 </html>
+ 
