@@ -1006,12 +1006,14 @@ def run_backtest(symbol):
 @app.route('/api/vpascan')
 def vpa_scan():
     try:
-        from vnstock.api.quote import Quote
+        import requests as req
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import numpy as np
 
         end   = datetime.today().strftime('%Y-%m-%d')
         start = (datetime.today() - timedelta(days=200)).strftime('%Y-%m-%d')
+
+        headers = {'Authorization': 'Bearer ' + FIREANT_TOKEN}
 
         def sma(arr, p):
             r = np.full(len(arr), np.nan)
@@ -1021,82 +1023,59 @@ def vpa_scan():
 
         def check_vpa(sym):
             try:
-                df = Quote(symbol=sym, source='VCI').history(start=start, end=end, interval='1D')
-                if df is None or df.empty or len(df) < 25: return None
+                url = f'https://restv2.fireant.vn/symbols/{sym}/historical-quotes'
+                r = req.get(url, headers=headers,
+                    params={'startDate':start,'endDate':end,'offset':0,'limit':200,'type':1},
+                    timeout=10)
+                if r.status_code != 200: return None
+                data = list(reversed(r.json()))
+                if not data or len(data) < 25: return None
 
-                o = df['open'].values.astype(float)
-                h = df['high'].values.astype(float)
-                l = df['low'].values.astype(float)
-                c = df['close'].values.astype(float)
-                v = df['volume'].values.astype(float)
+                o = np.array([d['priceOpen']  for d in data], dtype=float)
+                h = np.array([d['priceHigh']  for d in data], dtype=float)
+                l = np.array([d['priceLow']   for d in data], dtype=float)
+                c = np.array([d['priceClose'] for d in data], dtype=float)
+                v = np.array([d.get('dealVolume', d.get('totalVolume',0)) for d in data], dtype=float)
                 n = len(c)
 
                 vol_avg    = sma(v, 20)
                 avg_spread = sma(h - l, 20)
                 spread     = h - l
 
-                # Helper - avoid nan
                 def vavg(i): return vol_avg[i] if not np.isnan(vol_avg[i]) else np.mean(v[max(0,i-5):i+1])
                 def savg(i): return avg_spread[i] if not np.isnan(avg_spread[i]) else np.mean(spread[max(0,i-5):i+1])
 
-                i = n - 1  # last bar for win rate calc
+                i = n - 1
                 if i < 5: return None
 
                 signals = []
-                sig_type = None
+                # Check last 3 bars
+                for idx in range(max(5, n-3), n):
+                    ii = idx
+                    va = vavg(ii); sa = savg(ii)
+                    if va == 0: continue
 
-                # Check last 3 bars for signals
-                check_range = range(max(5, n-3), n)
-                for i in check_range:
-                    if i < 5: continue
-
-                    # ── BUY signals ──
-                    if (c[i-1] < c[i-2] and c[i] > c[i-1] and
-                        v[i] > vavg(i) * 0.8 and
-                        c[i] > (l[i] + spread[i]*0.5)):
+                    # BUY
+                    if c[ii-1]<c[ii-2] and c[ii]>c[ii-1] and v[ii]>va*0.8 and c[ii]>(l[ii]+spread[ii]*0.5):
                         if 'Strength' not in signals: signals.append('Strength')
-
-                    if (c[i] < c[i-1] and
-                        spread[i] < savg(i) * 0.9 and
-                        v[i] < vavg(i) * 0.9 and
-                        c[i] > (l[i] + spread[i]*0.3)):
+                    if c[ii]<c[ii-1] and spread[ii]<sa*0.9 and v[ii]<va*0.9 and c[ii]>(l[ii]+spread[ii]*0.3):
                         if 'NoSupply' not in signals: signals.append('NoSupply')
-
-                    if (v[i] > vavg(i) * 1.2 and
-                        c[i] > (l[i] + spread[i]*0.5) and
-                        l[i] <= min(l[max(0,i-5):i+1])):
+                    if v[ii]>va*1.2 and c[ii]>(l[ii]+spread[ii]*0.5) and l[ii]<=min(l[max(0,ii-5):ii+1]):
                         if 'StopVol' not in signals: signals.append('StopVol')
-
-                    if (c[i] > c[i-1] and
-                        spread[i] > savg(i) * 0.7 and
-                        v[i] > vavg(i) * 0.6 and
-                        c[i] > (l[i] + spread[i]*0.6)):
+                    if c[ii]>c[ii-1] and spread[ii]>sa*0.7 and v[ii]>va*0.6 and c[ii]>(l[ii]+spread[ii]*0.6):
                         if 'Bull' not in signals: signals.append('Bull')
-
-                    if (v[i] < vavg(i) * 0.8 and
-                        l[i] <= min(l[max(0,i-3):i]) and
-                        c[i] > (l[i] + spread[i]*0.5)):
+                    if v[ii]<va*0.8 and l[ii]<=min(l[max(0,ii-3):ii]) and c[ii]>(l[ii]+spread[ii]*0.5):
                         if 'Test' not in signals: signals.append('Test')
-
-                    # ── SELL signals ──
-                    if (spread[i] > savg(i) * 0.7 and
-                        c[i] < (l[i] + spread[i]*0.5) and
-                        h[i] >= max(h[max(0,i-3):i])):
+                    # SELL
+                    if spread[ii]>sa*0.7 and c[ii]<(l[ii]+spread[ii]*0.5) and h[ii]>=max(h[max(0,ii-3):ii]):
                         if 'UpThrust' not in signals: signals.append('UpThrust')
-
-                    if (v[i] > vavg(i) * 1.1 and
-                        c[i] > c[i-1] and
-                        c[i] < (l[i] + spread[i]*0.5)):
+                    if v[ii]>va*1.1 and c[ii]>c[ii-1] and c[ii]<(l[ii]+spread[ii]*0.5):
                         if 'Distribute' not in signals: signals.append('Distribute')
-
-                    if (c[i] > c[i-1] and
-                        spread[i] < savg(i) * 0.9 and
-                        v[i] < vavg(i) * 0.8):
+                    if c[ii]>c[ii-1] and spread[ii]<sa*0.9 and v[ii]<va*0.8:
                         if 'NoDemand' not in signals: signals.append('NoDemand')
 
                 if not signals: return None
 
-                # Classify
                 buy_set  = {'Strength','NoSupply','StopVol','Bull','Test'}
                 sell_set = {'UpThrust','Distribute','NoDemand'}
                 has_buy  = any(s in buy_set  for s in signals)
@@ -1106,61 +1085,61 @@ def vpa_scan():
                 elif has_sell and not has_buy: sig_type = 'SELL'
                 else:                          sig_type = 'MIXED'
 
-                # Quick win rate (last 60 bars, 5-day forward return)
+                # Win rate
                 wins, total_bt = 0, 0
                 for j in range(max(5, n-60), n-5):
-                    if len(c) <= j+5: break
                     entry = c[j]
-                    future_max = max(c[j+1:j+6])
-                    future_min = min(c[j+1:j+6])
                     if sig_type == 'BUY':
-                        if future_max > entry * 1.015: wins += 1
+                        if max(c[j+1:j+6]) > entry*1.015: wins += 1
                         total_bt += 1
                     elif sig_type == 'SELL':
-                        if future_min < entry * 0.985: wins += 1
+                        if min(c[j+1:j+6]) < entry*0.985: wins += 1
                         total_bt += 1
 
-                win_rate = round(wins/total_bt*100, 1) if total_bt > 0 else 50
+                win_rate = round(wins/total_bt*100,1) if total_bt>0 else 50
                 pct = (c[-1]-c[-2])/c[-2]*100 if n>1 else 0
-
-                # MA trend filter
-                ma20 = sma(c, 20)
-                ma50 = sma(c, 50)
-                trend = 'UP' if (not np.isnan(ma20[-1]) and not np.isnan(ma50[-1]) and ma20[-1] > ma50[-1]) else 'DOWN'
+                ma20 = sma(c,20); ma50 = sma(c,50)
+                trend = 'UP' if (not np.isnan(ma20[-1]) and not np.isnan(ma50[-1]) and ma20[-1]>ma50[-1]) else 'DOWN'
 
                 return {
-                    'sym': sym,
-                    'signal': sig_type,
-                    'signals': signals,
-                    'close': round(float(c[-1]), 2),
-                    'pct': round(float(pct), 2),
-                    'volume': int(float(v[-1])),
-                    'win_rate': win_rate,
-                    'total_bt': total_bt,
-                    'trend': trend,
+                    'sym': sym, 'signal': sig_type, 'signals': signals,
+                    'close': round(float(c[-1]),2), 'pct': round(float(pct),2),
+                    'volume': int(float(v[-1])), 'win_rate': win_rate,
+                    'total_bt': total_bt, 'trend': trend,
                 }
             except: return None
 
         results = []
-        with ThreadPoolExecutor(max_workers=20) as ex:
-            futures = {ex.submit(check_vpa, s): s for s in SCAN_SYMBOLS}
+        with ThreadPoolExecutor(max_workers=30) as ex:
+            futures = {ex.submit(check_vpa, s): s for s in BREADTH_SYMBOLS}
             for f in as_completed(futures):
                 r = f.result()
                 if r: results.append(r)
 
         order = {'BUY':0,'SELL':1,'MIXED':2}
-        results.sort(key=lambda x: (order.get(x['signal'],3), -x['win_rate']))
+        
+        # Quality filters
+        filtered = []
+        for r in results:
+            # Win rate filter
+            if r['win_rate'] < 52: continue
+            # Trend alignment: BUY should be in uptrend, SELL in downtrend
+            if r['signal'] == 'BUY'  and r['trend'] == 'DOWN': continue
+            if r['signal'] == 'SELL' and r['trend'] == 'UP':   continue
+            filtered.append(r)
+        
+        filtered.sort(key=lambda x: (order.get(x['signal'],3), -x['win_rate']))
 
         return jsonify({
-            'count': len(results),
-            'total_scanned': len(SCAN_SYMBOLS),
-            'results': results
+            'count': len(filtered),
+            'total_scanned': len(BREADTH_SYMBOLS),
+            'total_found': len(results),
+            'results': filtered
         })
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("="*50)

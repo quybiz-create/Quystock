@@ -1444,9 +1444,12 @@ function renderVPAScan(data) {
   var mixed = data.results.filter(function(r){return r.signal==='MIXED';});
 
   var html = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;padding:8px 0 0;">'
-    +'<span style="font-size:10px;color:var(--gray1);">Tim thay: <b style="color:var(--green2)">'+buys.length+' BUY</b> | <b style="color:var(--red2)">'+sells.length+' SELL</b> | '+mixed.length+' MIXED / '+data.total_scanned+'</span>'
+    +'<span style="font-size:10px;color:var(--gray1);">Tim thay: <b style="color:var(--green2)">'+buys.length+' BUY</b> | <b style="color:var(--red2)">'+sells.length+' SELL</b> | '+mixed.length+' MIXED'
+    +(data.total_found?' <span style="color:var(--gray2)">(loc tu '+data.total_found+')</span>':'')
+    +' / '+data.total_scanned+'</span>'
     +'<button onclick="startVPAScan()" style="margin-left:auto;background:transparent;border:1px solid var(--amber3);color:var(--amber);font-family:var(--mono);font-size:8px;padding:2px 8px;cursor:pointer;">↺ QUET LAI</button>'
-    +'</div>';
+    +'</div>'
+    +'<div style="font-size:8px;color:var(--gray2);margin-bottom:6px;">Bo loc: Win rate ≥ 52% | BUY phai UP trend | SELL phai DOWN trend</div>';
 
   function renderGroup(list, title, color) {
     if(!list.length) return '';
