@@ -195,7 +195,25 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .toast{position:fixed;bottom:12px;right:12px;background:var(--bg3);border:1px solid var(--border2);border-left:2px solid var(--amber);padding:5px 12px;font-size:10px;letter-spacing:1px;z-index:9000;opacity:0;transform:translateY(6px);transition:all .25s;pointer-events:none;}
-/* MARKET BREADTH */
+/* FEAR & GREED */
+.fg-wrap{display:flex;gap:12px;padding:10px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;}
+.fg-left{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
+.fg-title{font-size:8px;color:var(--amber3);letter-spacing:2px;margin-bottom:6px;align-self:flex-start;}
+.fg-score-wrap{text-align:center;margin-top:-10px;}
+.fg-score{font-size:28px;font-weight:700;font-family:var(--tech);}
+.fg-label{font-size:9px;letter-spacing:2px;margin-top:2px;}
+.fg-right{flex:1;}
+.fg-components{display:flex;flex-direction:column;gap:5px;}
+.fg-comp{display:flex;align-items:center;gap:6px;}
+.fg-comp-lbl{font-size:8px;color:var(--gray1);width:100px;flex-shrink:0;}
+.fg-comp-bar-bg{flex:1;height:4px;background:var(--border2);border-radius:2px;}
+.fg-comp-bar{height:100%;border-radius:2px;transition:width .5s;}
+.fg-comp-val{font-size:8px;font-weight:700;width:32px;text-align:right;flex-shrink:0;}
+@media(max-width:600px){
+  .fg-wrap{flex-direction:column;align-items:flex-start;}
+  .fg-right{width:100%;}
+  .fg-comp-lbl{width:80px;}
+}
 .market-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg1);height:100%;}
 .mkt-summary{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
 .mkt-card{background:var(--bg3);border:1px solid var(--border);padding:6px 10px;position:relative;min-width:110px;flex:1;}
@@ -511,6 +529,21 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
             <div class="mkt-lbl">TREN MA50</div>
             <div class="mkt-val" id="mMA50pct">—</div>
             <div class="mkt-bar-bg"><div class="mkt-bar-fill" id="mMA50bar" style="width:0%;background:var(--blue)"></div></div>
+          </div>
+        </div>
+
+        <!-- Fear & Greed Index -->
+        <div class="fg-wrap">
+          <div class="fg-left">
+            <div class="fg-title">◈ FEAR & GREED INDEX</div>
+            <canvas id="fgGauge" width="240" height="130"></canvas>
+            <div class="fg-score-wrap">
+              <div class="fg-score" id="fgScore">—</div>
+              <div class="fg-label" id="fgLabel">DANG TINH...</div>
+            </div>
+          </div>
+          <div class="fg-right">
+            <div class="fg-components" id="fgComponents"></div>
           </div>
         </div>
 
@@ -1174,6 +1207,7 @@ async function loadBreadth() {
 
     // Render charts
     renderBreadthCharts(data);
+    renderFearGreed(data);
     breadthLoaded = true;
 
   } catch(e) {
@@ -1183,6 +1217,165 @@ async function loadBreadth() {
 }
 
 var BREADTH_SYMBOLS_COUNT = 300;
+
+function calcFearGreed(data) {
+  if(!data || !data.latest) return null;
+  var l = data.latest;
+  var total = l.total || 1;
+
+  // Component 1: A/D Ratio (25%)
+  var adRaw = l.up / total * 100;
+  var adScore = Math.min(100, Math.max(0, adRaw * 2)); // 50% up = 100 score
+
+  // Component 2: % above MA20 (25%)
+  var ma20Score = Math.min(100, Math.max(0, l.ma20_pct * 1.5));
+
+  // Component 3: % above MA50 (20%)
+  var ma50Score = Math.min(100, Math.max(0, l.ma50_pct * 1.5));
+
+  // Component 4: A/D Momentum - trend of last 5 vs 20 days (15%)
+  var adArr = data.ad || [];
+  var adMom = 50;
+  if(adArr.length >= 20) {
+    var avg5  = adArr.slice(-5).reduce(function(s,v){return s+v;},0)/5;
+    var avg20 = adArr.slice(-20).reduce(function(s,v){return s+v;},0)/20;
+    adMom = avg5 > avg20 ? Math.min(100, 50 + (avg5-avg20)*2) : Math.max(0, 50 + (avg5-avg20)*2);
+  }
+
+  // Component 5: MA20 Breadth trend (15%)
+  var ma20Arr = data.ma20_pct || [];
+  var ma20Mom = 50;
+  if(ma20Arr.length >= 10) {
+    var m5  = ma20Arr.slice(-5).reduce(function(s,v){return s+v;},0)/5;
+    var m10 = ma20Arr.slice(-10).reduce(function(s,v){return s+v;},0)/10;
+    ma20Mom = m5 > m10 ? Math.min(100, 50+(m5-m10)*3) : Math.max(0, 50+(m5-m10)*3);
+  }
+
+  var total_score = Math.round(
+    adScore  * 0.25 +
+    ma20Score* 0.25 +
+    ma50Score* 0.20 +
+    adMom    * 0.15 +
+    ma20Mom  * 0.15
+  );
+
+  return {
+    score: total_score,
+    components: [
+      {label:'A/D Ratio',    val: Math.round(adScore),   weight:'25%'},
+      {label:'%>MA20',       val: Math.round(ma20Score),  weight:'25%'},
+      {label:'%>MA50',       val: Math.round(ma50Score),  weight:'20%'},
+      {label:'A/D Momentum', val: Math.round(adMom),      weight:'15%'},
+      {label:'MA20 Trend',   val: Math.round(ma20Mom),    weight:'15%'},
+    ]
+  };
+}
+
+function getFGColor(score) {
+  if(score <= 20) return '#ff2244';
+  if(score <= 40) return '#ff6600';
+  if(score <= 60) return '#ffcc00';
+  if(score <= 80) return '#66cc00';
+  return '#00cc44';
+}
+
+function getFGLabel(score) {
+  if(score <= 20) return 'SO HAI CUC DO 😱';
+  if(score <= 40) return 'SO HAI 😨';
+  if(score <= 60) return 'TRUNG LAP 😐';
+  if(score <= 80) return 'THAM LAM 😊';
+  return 'THAM LAM CUC DO 🤑';
+}
+
+function drawFGGauge(score) {
+  var canvas = document.getElementById('fgGauge');
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  var cx = W/2, cy = H-10, r = Math.min(W,H*2)/2 - 10;
+
+  // Background arc segments
+  var segments = [
+    {from:Math.PI, to:Math.PI*1.2, color:'#cc0022'},
+    {from:Math.PI*1.2, to:Math.PI*1.4, color:'#ff6600'},
+    {from:Math.PI*1.4, to:Math.PI*1.6, color:'#ffcc00'},
+    {from:Math.PI*1.6, to:Math.PI*1.8, color:'#66cc00'},
+    {from:Math.PI*1.8, to:Math.PI*2, color:'#00cc44'},
+  ];
+  segments.forEach(function(s) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, s.from, s.to);
+    ctx.lineWidth = 18;
+    ctx.strokeStyle = s.color;
+    ctx.stroke();
+  });
+
+  // Inner dark arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, r-10, Math.PI, Math.PI*2);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,255,255,.05)';
+  ctx.stroke();
+
+  // Needle
+  var angle = Math.PI + (score/100) * Math.PI;
+  var nx = cx + (r-20) * Math.cos(angle);
+  var ny = cy + (r-20) * Math.sin(angle);
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(nx, ny);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI*2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  // Labels
+  ctx.fillStyle = '#666';
+  ctx.font = "8px 'Roboto Mono'";
+  ctx.textAlign = 'center';
+  ctx.fillText('0', cx - r + 5, cy + 12);
+  ctx.fillText('50', cx, cy - r + 10);
+  ctx.fillText('100', cx + r - 5, cy + 12);
+}
+
+function renderFearGreed(data) {
+  var fg = calcFearGreed(data);
+  if(!fg) return;
+
+  var color = getFGColor(fg.score);
+  var label = getFGLabel(fg.score);
+
+  // Score display
+  var scoreEl = document.getElementById('fgScore');
+  var labelEl = document.getElementById('fgLabel');
+  if(scoreEl) { scoreEl.textContent = fg.score; scoreEl.style.color = color; }
+  if(labelEl) { labelEl.textContent = label; labelEl.style.color = color; }
+
+  // Draw gauge
+  drawFGGauge(fg.score);
+
+  // Components
+  var compEl = document.getElementById('fgComponents');
+  if(!compEl) return;
+  var html = '';
+  fg.components.forEach(function(c) {
+    var cc = getFGColor(c.val);
+    html += '<div class="fg-comp">'
+      +'<span class="fg-comp-lbl">'+c.label+'<span style="color:var(--gray2);font-size:7px;"> ('+c.weight+')</span></span>'
+      +'<div class="fg-comp-bar-bg"><div class="fg-comp-bar" style="width:'+c.val+'%;background:'+cc+'"></div></div>'
+      +'<span class="fg-comp-val" style="color:'+cc+'">'+c.val+'</span>'
+      +'</div>';
+  });
+  compEl.innerHTML = html;
+}
 
 function renderBreadthCharts(data) {
   // Destroy old
