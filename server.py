@@ -1011,10 +1011,9 @@ def vpa_scan():
         import numpy as np
 
         end   = datetime.today().strftime('%Y-%m-%d')
-        start = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
-        bt_start = (datetime.today() - timedelta(days=90)).strftime('%Y-%m-%d')
+        start = (datetime.today() - timedelta(days=200)).strftime('%Y-%m-%d')
 
-        def ma(arr, p):
+        def sma(arr, p):
             r = np.full(len(arr), np.nan)
             for i in range(p-1, len(arr)):
                 r[i] = np.mean(arr[i-p+1:i+1])
@@ -1023,7 +1022,7 @@ def vpa_scan():
         def check_vpa(sym):
             try:
                 df = Quote(symbol=sym, source='VCI').history(start=start, end=end, interval='1D')
-                if df is None or df.empty or len(df) < 30: return None
+                if df is None or df.empty or len(df) < 25: return None
 
                 o = df['open'].values.astype(float)
                 h = df['high'].values.astype(float)
@@ -1032,71 +1031,106 @@ def vpa_scan():
                 v = df['volume'].values.astype(float)
                 n = len(c)
 
-                vol_avg    = ma(v, 20)
-                avg_spread = ma(h - l, 20)
+                vol_avg    = sma(v, 20)
+                avg_spread = sma(h - l, 20)
                 spread     = h - l
-                up_bar     = np.concatenate([[False], c[1:] > c[:-1]])
-                down_bar   = np.concatenate([[False], c[1:] < c[:-1]])
-                up_close   = c >= (spread * 0.6 + l)
-                down_close = c <= (spread * 0.4 + l)
-                low_vol    = np.concatenate([[False,False], (v[2:]<v[1:-1])&(v[2:]<v[:-2])])
-                wide       = spread > (1.5 * np.where(np.isnan(avg_spread), spread, avg_spread))
-                narrow     = spread < (0.7 * np.where(np.isnan(avg_spread), spread, avg_spread))
-                vavg       = np.where(np.isnan(vol_avg), v, vol_avg)
 
-                # VPA signals on last bar
-                i = n - 1
+                # Helper - avoid nan
+                def vavg(i): return vol_avg[i] if not np.isnan(vol_avg[i]) else np.mean(v[max(0,i-5):i+1])
+                def savg(i): return avg_spread[i] if not np.isnan(avg_spread[i]) else np.mean(spread[max(0,i-5):i+1])
+
+                i = n - 1  # last bar
+                if i < 5: return None
+
                 signals = []
+                sig_type = None
 
-                # BUY signals
-                if i>0 and v[i]>vavg[i] and down_bar[i-1] and up_bar[i] and up_close[i]:
+                # ── BUY signals ──
+                # 1. Strength after down: prev down, today up, high volume, close upper half
+                if (c[i-1] < c[i-2] and c[i] > c[i-1] and
+                    v[i] > vavg(i) * 0.8 and
+                    c[i] > (l[i] + spread[i]*0.5)):
                     signals.append('Strength')
-                if down_bar[i] and narrow[i] and (i>=2 and low_vol[i]) and c[i]<(spread[i]*0.5+l[i]):
+
+                # 2. No Supply: down bar, narrow spread, low volume
+                if (c[i] < c[i-1] and
+                    spread[i] < savg(i) * 0.8 and
+                    v[i] < vavg(i) * 0.8 and
+                    c[i] > (l[i] + spread[i]*0.3)):
                     signals.append('NoSupply')
-                if up_close[i] and v[i]>1.5*vavg[i] and not up_bar[i]:
+
+                # 3. Stop Volume: large volume, close upper half, not necessarily up
+                if (v[i] > vavg(i) * 1.3 and
+                    c[i] > (l[i] + spread[i]*0.5) and
+                    l[i] <= min(l[max(0,i-5):i+1])):
                     signals.append('StopVol')
-                if v[i]>vavg[i] and up_close[i] and up_bar[i] and wide[i]:
+
+                # 4. Bull bar: up close, wide range, above average volume
+                if (c[i] > c[i-1] and
+                    spread[i] > savg(i) * 0.8 and
+                    v[i] > vavg(i) * 0.7 and
+                    c[i] > (l[i] + spread[i]*0.6)):
                     signals.append('Bull')
 
-                # SELL signals
-                if wide[i] and down_close[i] and i>0 and h[i]>h[i-1]:
+                # 5. Test in downtrend: low volume test of support
+                if (v[i] < vavg(i) * 0.7 and
+                    l[i] <= min(l[max(0,i-3):i]) and
+                    c[i] > (l[i] + spread[i]*0.5)):
+                    signals.append('Test')
+
+                # ── SELL signals ──
+                # 6. UpThrust: wide range, close lower half, high of day exceeds recent highs
+                if (spread[i] > savg(i) * 0.8 and
+                    c[i] < (l[i] + spread[i]*0.5) and
+                    h[i] >= max(h[max(0,i-3):i])):
                     signals.append('UpThrust')
-                if v[i]>1.5*vavg[i] and down_close[i] and up_bar[i]:
+
+                # 7. Distribute: high volume, up bar but close lower half
+                if (v[i] > vavg(i) * 1.2 and
+                    c[i] > c[i-1] and
+                    c[i] < (l[i] + spread[i]*0.5)):
                     signals.append('Distribute')
+
+                # 8. No Demand: up bar, narrow, low volume
+                if (c[i] > c[i-1] and
+                    spread[i] < savg(i) * 0.8 and
+                    v[i] < vavg(i) * 0.8 and
+                    c[i] < (l[i] + spread[i]*0.6)):
+                    signals.append('NoDemand')
 
                 if not signals: return None
 
-                # Determine signal type
-                buy_sigs  = ['Strength','NoSupply','StopVol','Bull']
-                sell_sigs = ['UpThrust','Distribute']
-                has_buy  = any(s in buy_sigs  for s in signals)
-                has_sell = any(s in sell_sigs for s in signals)
-                if has_buy and has_sell:
-                    sig_type = 'MIXED'
-                elif has_buy:
-                    sig_type = 'BUY'
-                else:
-                    sig_type = 'SELL'
+                # Classify
+                buy_set  = {'Strength','NoSupply','StopVol','Bull','Test'}
+                sell_set = {'UpThrust','Distribute','NoDemand'}
+                has_buy  = any(s in buy_set  for s in signals)
+                has_sell = any(s in sell_set for s in signals)
 
-                # Quick backtest win rate (last 90 days)
-                bt_idx = max(0, n - 65)
-                bc = c[bt_idx:]
+                if has_buy and not has_sell:   sig_type = 'BUY'
+                elif has_sell and not has_buy: sig_type = 'SELL'
+                else:                          sig_type = 'MIXED'
+
+                # Quick win rate (last 60 bars, 5-day forward return)
                 wins, total_bt = 0, 0
-                for j in range(2, len(bc)-5):
-                    entry = bc[j]
-                    future = bc[j+1:j+6]
-                    if len(future) == 0: continue
-                    best = max(future) if sig_type in ['BUY','MIXED'] else 0
-                    worst = min(future)
+                for j in range(max(5, n-60), n-5):
+                    if len(c) <= j+5: break
+                    entry = c[j]
+                    future_max = max(c[j+1:j+6])
+                    future_min = min(c[j+1:j+6])
                     if sig_type == 'BUY':
-                        if best > entry * 1.02: wins += 1
+                        if future_max > entry * 1.015: wins += 1
                         total_bt += 1
                     elif sig_type == 'SELL':
-                        if worst < entry * 0.98: wins += 1
+                        if future_min < entry * 0.985: wins += 1
                         total_bt += 1
 
-                win_rate = round(wins/total_bt*100, 1) if total_bt > 0 else 0
+                win_rate = round(wins/total_bt*100, 1) if total_bt > 0 else 50
                 pct = (c[-1]-c[-2])/c[-2]*100 if n>1 else 0
+
+                # MA trend filter
+                ma20 = sma(c, 20)
+                ma50 = sma(c, 50)
+                trend = 'UP' if (not np.isnan(ma20[-1]) and not np.isnan(ma50[-1]) and ma20[-1] > ma50[-1]) else 'DOWN'
 
                 return {
                     'sym': sym,
@@ -1107,6 +1141,7 @@ def vpa_scan():
                     'volume': int(float(v[-1])),
                     'win_rate': win_rate,
                     'total_bt': total_bt,
+                    'trend': trend,
                 }
             except: return None
 
@@ -1117,7 +1152,6 @@ def vpa_scan():
                 r = f.result()
                 if r: results.append(r)
 
-        # Sort: BUY first, then SELL, then MIXED, by win_rate
         order = {'BUY':0,'SELL':1,'MIXED':2}
         results.sort(key=lambda x: (order.get(x['signal'],3), -x['win_rate']))
 

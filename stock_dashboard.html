@@ -1451,10 +1451,11 @@ function renderVPAScan(data) {
   function renderGroup(list, title, color) {
     if(!list.length) return '';
     var h = '<div style="font-size:8px;color:'+color+';letter-spacing:2px;margin:8px 0 4px;">'+title+' ('+list.length+')</div>'
-      +'<table class="stbl"><thead><tr><th>MA</th><th>TIN HIEU</th><th>GIA</th><th>%NGAY</th><th>WIN RATE</th><th>VOL</th></tr></thead><tbody>';
+      +'<table class="stbl"><thead><tr><th>MA</th><th>TIN HIEU</th><th>GIA</th><th>%NGAY</th><th>WIN RATE</th><th>TREND</th><th>VOL</th></tr></thead><tbody>';
     list.forEach(function(r) {
       var pc = r.pct>=0?'var(--green)':'var(--red)';
       var wc = r.win_rate>=60?'var(--green)':r.win_rate>=45?'var(--amber)':'var(--red)';
+      var tc = r.trend==='UP'?'var(--green)':'var(--red)';
       var vol = r.volume>=1e6?(r.volume/1e6).toFixed(1)+'M':(r.volume/1e3).toFixed(0)+'K';
       h += '<tr onclick="pickScan(\''+r.sym+'\')">'
         +'<td class="ssym">'+r.sym+'</td>'
@@ -1462,6 +1463,7 @@ function renderVPAScan(data) {
         +'<td>'+r.close.toLocaleString()+'</td>'
         +'<td style="color:'+pc+'">'+(r.pct>=0?'+':'')+r.pct+'%</td>'
         +'<td style="color:'+wc+';font-weight:700;">'+r.win_rate+'%</td>'
+        +'<td style="color:'+tc+';">'+(r.trend||'—')+'</td>'
         +'<td style="color:var(--gray1)">'+vol+'</td>'
         +'</tr>';
     });
