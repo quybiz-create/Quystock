@@ -1351,13 +1351,14 @@ async function createCloudBin(pin, data) {
 }
 
 async function syncPortfolio() {
-  // Show custom PIN input modal
   var pinModal = document.createElement('div');
   pinModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
   pinModal.innerHTML = '<div style="background:#1a1a1a;border:1px solid var(--amber);padding:24px;width:300px;font-family:var(--mono);">'
     +'<div style="font-size:11px;color:var(--amber);letter-spacing:2px;margin-bottom:12px;">☁ DONG BO DANH MUC</div>'
     +'<div style="font-size:9px;color:var(--gray1);margin-bottom:10px;">Nhap PIN de dong bo giua PC va dien thoai.<br>Neu chua co PIN, dat PIN moi bat ky (4-8 ky tu).</div>'
-    +'<input id="pinInput" type="text" maxlength="8" placeholder="Nhap PIN..." style="width:100%;background:#111;border:1px solid var(--amber3);color:#fff;font-family:var(--mono);font-size:14px;padding:10px;outline:none;margin-bottom:12px;letter-spacing:2px;">'
+    +'<input id="pinInput" type="text" maxlength="8" placeholder="Nhap PIN..." style="width:100%;background:#111;border:1px solid var(--amber3);color:#fff;font-family:var(--mono);font-size:14px;padding:10px;outline:none;margin-bottom:8px;letter-spacing:2px;">'
+    +'<div style="font-size:9px;color:var(--gray2);margin-bottom:4px;">Bin ID (neu co, lay tu lan tao dau tien):</div>'
+    +'<input id="binIdInput" type="text" placeholder="Nhap Bin ID (neu co)..." style="width:100%;background:#111;border:1px solid var(--border2);color:#aaa;font-family:var(--mono);font-size:11px;padding:8px;outline:none;margin-bottom:12px;">'
     +'<div style="display:flex;gap:8px;">'
     +'<button onclick="this.closest(\'div[style]\').remove()" style="flex:1;background:transparent;border:1px solid var(--gray2);color:var(--gray1);font-family:var(--mono);font-size:10px;padding:8px;cursor:pointer;">HUY</button>'
     +'<button id="pinConfirm" style="flex:1;background:var(--amber3);border:none;color:black;font-family:var(--mono);font-size:10px;font-weight:700;padding:8px;cursor:pointer;letter-spacing:1px;">DONG BO</button>'
@@ -1367,62 +1368,65 @@ async function syncPortfolio() {
 
   document.getElementById('pinConfirm').onclick = async function() {
     var pin = document.getElementById('pinInput').value.trim();
+    var inputBinId = document.getElementById('binIdInput').value.trim();
     if(!pin || pin.length < 4) { alert('PIN phai co it nhat 4 ky tu!'); return; }
     pinModal.remove();
     pfPin = pin;
     localStorage.setItem('qs_pin', pin);
+    // Use provided Bin ID if available
+    if(inputBinId) {
+      pfBinId = inputBinId;
+      localStorage.setItem('qs_bin_id', inputBinId);
+      localStorage.setItem('qs_bin_'+pin, inputBinId);
+    }
     toast('Dang ket noi cloud...');
 
-    // Try load from existing bin
-    if(pfBinId) {
-      var data = await loadFromCloud(pin);
-      if(data) {
-        portfolio = data.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,currentPrice:null};});
-        localStorage.setItem('qs_portfolio', JSON.stringify(data));
-        await refreshPortfolioPrices();
-        toast('Da tai danh muc! '+portfolio.length+' ma.');
-        return;
-      }
+    // Try load from saved bin ID first
+    var savedBinId = localStorage.getItem('qs_bin_'+pin);
+    if(savedBinId) {
+      pfBinId = savedBinId;
+      localStorage.setItem('qs_bin_id', pfBinId);
+      try {
+        var r = await fetch(JSONBIN_URL+'/'+savedBinId+'/latest', {headers:{'X-Master-Key':JSONBIN_KEY}});
+        if(r.ok) {
+          var j = await r.json();
+          if(j.record && j.record.pin === pin) {
+            var pdata = j.record.portfolio || [];
+            portfolio = pdata.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,currentPrice:null};});
+            localStorage.setItem('qs_portfolio', JSON.stringify(pdata));
+            await refreshPortfolioPrices();
+            toast('Da tai danh muc! '+portfolio.length+' ma.');
+            return;
+          }
+        }
+      } catch(e) {}
     }
 
-    // Search all bins for matching PIN
+    // Create new bin
+    var currentData = portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty};});
     try {
-      var r = await fetch('https://api.jsonbin.io/v3/b?sortBy=createdAt&order=desc', {
-        headers:{'X-Master-Key':JSONBIN_KEY}
+      var cr = await fetch(JSONBIN_URL, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Bin-Name':'QS-'+pin,'X-Bin-Private':'false'},
+        body: JSON.stringify({pin: pin, portfolio: currentData})
       });
-      if(r.ok) {
-        var j = await r.json();
-        var bins = j.result || [];
-        for(var i=0; i<Math.min(bins.length,30); i++) {
-          try {
-            var bid = bins[i].record ? bins[i].record.id : bins[i].id;
-            var br = await fetch(JSONBIN_URL+'/'+bid+'/latest', {headers:{'X-Master-Key':JSONBIN_KEY}});
-            var bj = await br.json();
-            if(bj.record && bj.record.pin === pin) {
-              pfBinId = bid;
-              localStorage.setItem('qs_bin_id', pfBinId);
-              var pdata = bj.record.portfolio || [];
-              portfolio = pdata.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,currentPrice:null};});
-              localStorage.setItem('qs_portfolio', JSON.stringify(pdata));
-              await refreshPortfolioPrices();
-              toast('Da tai danh muc! '+portfolio.length+' ma.');
-              return;
-            }
-          } catch(e) {}
+      if(cr.ok) {
+        var cj = await cr.json();
+        var newId = cj.metadata ? cj.metadata.id : null;
+        if(newId) {
+          pfBinId = newId;
+          localStorage.setItem('qs_bin_id', newId);
+          localStorage.setItem('qs_bin_'+pin, newId);
+          toast('Tao cloud thanh cong! PIN: '+pin);
+          // Show bin ID for user to note
+          setTimeout(function(){
+            alert('PIN: '+pin+'\nBin ID: '+newId+'\n\nLuu thong tin nay de dung tren dien thoai!\nTren DT: nhap PIN va dan Bin ID vao.');
+          }, 500);
+          return;
         }
       }
     } catch(e) {}
-
-    // No existing bin — create new one
-    var currentData = portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty};});
-    var newId = await createCloudBin(pin, currentData);
-    if(newId) {
-      pfBinId = newId;
-      localStorage.setItem('qs_bin_id', newId);
-      toast('Da tao cloud moi! PIN: '+pin+'. Dung PIN nay tren dien thoai.');
-    } else {
-      toast('Loi tao cloud!', true);
-    }
+    toast('Loi ket noi JSONBin!', true);
   };
 }
 
