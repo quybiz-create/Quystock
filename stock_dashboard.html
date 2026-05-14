@@ -1332,8 +1332,14 @@ async function addPortfolio() {
 function savePortfolio() {
   var data = portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty};});
   localStorage.setItem('qs_portfolio', JSON.stringify(data));
-  // Sync to JSONBin if PIN set
-  if(pfPin && pfBinId) syncToCloud(data);
+  // Auto-sync to cloud if PIN + BinID available
+  if(pfPin && pfBinId) {
+    fetch(JSONBIN_URL+'/'+pfBinId, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Bin-Private':'false'},
+      body: JSON.stringify({pin: pfPin, portfolio: data})
+    }).then(function(){toast('Da luu & sync cloud!');}).catch(function(){});
+  }
 }
 
 async function syncToCloud(data) {
@@ -1372,7 +1378,10 @@ async function createCloudBin(pin, data) {
 }
 
 function showSyncQR(pin, binId) {
-  var syncUrl = location.origin + location.pathname + '?pin='+pin+'&bid='+binId;
+  var baseUrl = window.location.hostname === 'localhost' 
+    ? 'https://quystock.onrender.com' 
+    : location.origin;
+  var syncUrl = baseUrl + '/?pin='+pin+'&bid='+binId;
   var qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent(syncUrl);
   var qrModal = document.createElement('div');
   qrModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;display:flex;align-items:center;justify-content:center;';
