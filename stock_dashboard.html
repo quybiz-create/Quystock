@@ -562,6 +562,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
             <div class="pf-inp-grp"><label class="pf-lbl">SO LUONG (CP)</label><input class="pf-inp" id="pfQty" placeholder="1000" type="number"></div>
             <button class="pf-add-btn" onclick="addPortfolio()">+ THEM</button>
             <button class="pf-add-btn" onclick="refreshPortfolioPrices()" style="background:var(--bg3);border:1px solid var(--amber3);color:var(--amber);">↺ GIA MOI</button>
+            <button class="pf-add-btn" onclick="syncPortfolio()" style="background:var(--bg3);border:1px solid var(--cyan);color:var(--cyan);">☁ SYNC PIN</button>
           </div>
         </div>
         <!-- Table -->
@@ -1253,8 +1254,12 @@ function renderBreadthCharts(data) {
 }
 
 // ── PORTFOLIO ────────────────────────────────────────────────────────────
+var JSONBIN_KEY = '$2a$10$/SmjU5EdAryHWHhogB3Ssea7WPVc9EHu0MImYgWhKWcoI15Ijq5nC';
+var JSONBIN_URL = 'https://api.jsonbin.io/v3/b';
 var portfolio = JSON.parse(localStorage.getItem('qs_portfolio') || '[]');
 var pfChart = null;
+var pfPin = localStorage.getItem('qs_pin') || '';
+var pfBinId = localStorage.getItem('qs_bin_id') || '';
 
 var PF_COLORS = ['#ff9500','#00cc44','#0088ff','#ff2244','#a78bfa','#00ccff','#ffd700','#ff69b4','#76ff03','#1de9b6'];
 
@@ -1301,7 +1306,117 @@ async function addPortfolio() {
   renderPortfolio();
   toast(sym+' da them vao danh muc!');}
 
-function savePortfolio() { localStorage.setItem('qs_portfolio', JSON.stringify(portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty};}))); }
+function savePortfolio() {
+  var data = portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty};});
+  localStorage.setItem('qs_portfolio', JSON.stringify(data));
+  // Sync to JSONBin if PIN set
+  if(pfPin && pfBinId) syncToCloud(data);
+}
+
+async function syncToCloud(data) {
+  try {
+    await fetch(JSONBIN_URL+'/'+pfBinId, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Bin-Private':'false'},
+      body: JSON.stringify({pin: pfPin, portfolio: data})
+    });
+  } catch(e) { console.log('Sync error:', e); }
+}
+
+async function loadFromCloud(pin) {
+  try {
+    // Search bin by pin in name
+    var r = await fetch('https://api.jsonbin.io/v3/b/'+pfBinId+'/latest', {
+      headers: {'X-Master-Key': JSONBIN_KEY}
+    });
+    if(!r.ok) return null;
+    var j = await r.json();
+    if(j.record && j.record.pin === pin) return j.record.portfolio;
+    return null;
+  } catch(e) { return null; }
+}
+
+async function createCloudBin(pin, data) {
+  try {
+    var r = await fetch(JSONBIN_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-Master-Key':JSONBIN_KEY,'X-Bin-Name':'QuyStock-'+pin,'X-Bin-Private':'false'},
+      body: JSON.stringify({pin: pin, portfolio: data})
+    });
+    var j = await r.json();
+    return j.metadata ? j.metadata.id : null;
+  } catch(e) { return null; }
+}
+
+async function syncPortfolio() {
+  var pin = prompt('Nhap ma PIN (4-8 ky tu) de dong bo danh muc giua PC va dien thoai:\n(Neu chua co PIN, tao PIN moi bat ky)');
+  if(!pin || pin.length < 4) { toast('PIN phai co it nhat 4 ky tu!', true); return; }
+
+  toast('Dang ket noi cloud...');
+  pfPin = pin;
+  localStorage.setItem('qs_pin', pin);
+
+  // Try to find existing bin with this pin
+  if(pfBinId) {
+    // Load from existing bin
+    var data = await loadFromCloud(pin);
+    if(data) {
+      portfolio = data;
+      localStorage.setItem('qs_portfolio', JSON.stringify(data));
+      await refreshPortfolioPrices();
+      toast('Da dong bo tu cloud! '+data.length+' ma.');
+      return;
+    }
+  }
+
+  // Search bins
+  try {
+    var r = await fetch('https://api.jsonbin.io/v3/b?sortBy=createdAt', {
+      headers: {'X-Master-Key': JSONBIN_KEY}
+    });
+    var j = await r.json();
+    var bins = j.result || [];
+    // Find bin with matching pin name
+    var found = bins.find(function(b){ return b.record && b.record.name === 'QuyStock-'+pin; });
+    if(!found) {
+      // Try fetch each bin to find matching pin
+      for(var i=0; i<Math.min(bins.length,20); i++) {
+        try {
+          var br = await fetch(JSONBIN_URL+'/'+bins[i].record.id+'/latest', {headers:{'X-Master-Key':JSONBIN_KEY}});
+          var bj = await br.json();
+          if(bj.record && bj.record.pin === pin) {
+            found = {id: bins[i].record.id};
+            break;
+          }
+        } catch(e) {}
+      }
+    }
+
+    if(found) {
+      pfBinId = found.id || (found.record && found.record.id);
+      localStorage.setItem('qs_bin_id', pfBinId);
+      var data2 = await loadFromCloud(pin);
+      if(data2) {
+        portfolio = data2;
+        localStorage.setItem('qs_portfolio', JSON.stringify(data2));
+        await refreshPortfolioPrices();
+        toast('Da tai danh muc tu cloud! '+data2.length+' ma.');
+        return;
+      }
+    }
+  } catch(e) {}
+
+  // Create new bin
+  var currentData = portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty};});
+  var newBinId = await createCloudBin(pin, currentData);
+  if(newBinId) {
+    pfBinId = newBinId;
+    localStorage.setItem('qs_bin_id', newBinId);
+    toast('Da tao danh muc cloud moi! PIN: '+pin);
+  } else {
+    toast('Loi tao cloud! Kiem tra API key.', true);
+  }
+}
 
 function removePortfolio(sym) {
   portfolio = portfolio.filter(function(p){return p.sym !== sym;});
@@ -1447,5 +1562,4 @@ setInterval(async function(){
 </script>
 </body>
 </html>
- 
  
