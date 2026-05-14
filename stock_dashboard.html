@@ -195,6 +195,33 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .toast{position:fixed;bottom:12px;right:12px;background:var(--bg3);border:1px solid var(--border2);border-left:2px solid var(--amber);padding:5px 12px;font-size:10px;letter-spacing:1px;z-index:9000;opacity:0;transform:translateY(6px);transition:all .25s;pointer-events:none;}
+/* MARKET BREADTH */
+.market-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg1);height:100%;}
+.mkt-summary{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
+.mkt-card{background:var(--bg3);border:1px solid var(--border);padding:6px 10px;position:relative;min-width:110px;flex:1;}
+.mkt-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:var(--amber3);}
+.mkt-card.up-bg::before{background:var(--green);}
+.mkt-card.dn-bg::before{background:var(--red);}
+.mkt-lbl{font-size:7px;color:var(--gray2);letter-spacing:1px;margin-bottom:2px;}
+.mkt-val{font-size:13px;font-weight:700;font-family:var(--tech);}
+.mkt-bar-bg{height:3px;background:var(--border2);margin-top:4px;border-radius:2px;}
+.mkt-bar-fill{height:100%;background:var(--green);border-radius:2px;transition:width .5s;}
+.mkt-ctrl{display:flex;align-items:center;gap:6px;padding:5px 12px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg2);}
+.mkt-charts{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:8px;min-height:0;}
+.mkt-charts::-webkit-scrollbar{width:2px;}
+.mkt-chart-wrap{background:var(--bg2);border:1px solid var(--border);padding:8px 10px;flex-shrink:0;}
+.mkt-chart-title{font-size:8px;color:var(--amber3);letter-spacing:1px;margin-bottom:6px;}
+.mkt-chart-canvas{height:140px;max-height:140px;}
+.mkt-chart-canvas2{height:110px;max-height:110px;}
+@media(max-width:600px){
+  .mkt-summary{gap:4px;padding:6px 8px;}
+  .mkt-card{min-width:80px;padding:4px 7px;}
+  .mkt-val{font-size:11px;}
+  .mkt-charts{padding:6px;}
+  .mkt-chart-canvas{height:110px;}
+  .mkt-chart-canvas2{height:90px;}
+}
+
 .toast.show{opacity:1;transform:translateY(0);}
 .toast.err{border-left-color:var(--red);}
 
@@ -315,6 +342,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
       <button class="tab-btn active" onclick="switchTab('chart',this)">BIEU DO</button>
       <button class="tab-btn" onclick="switchTab('fund',this)">TAI CHINH</button>
       <button class="tab-btn" onclick="switchTab('ai',this)">PHAN TICH AI</button>
+      <button class="tab-btn" onclick="switchTab('market',this);loadBreadth()">MARKET</button>
       <div class="tb-sep"></div>
       <div class="cgrp" id="typeG">
         <button class="cbtn active" onclick="setType('candle',this)">Nen</button>
@@ -409,10 +437,61 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
         </div>
       </div>
     </div>
+
+    <!-- MARKET BREADTH PANEL -->
+    <div class="panel" id="panel-market">
+      <div class="market-wrap">
+        <!-- Summary Cards -->
+        <div class="mkt-summary" id="mktSummary">
+          <div class="mkt-card">
+            <div class="mkt-lbl">TONG MA QUET</div>
+            <div class="mkt-val" id="mTotalSym">—</div>
+          </div>
+          <div class="mkt-card up-bg">
+            <div class="mkt-lbl">SO MA TANG</div>
+            <div class="mkt-val up" id="mUp">—</div>
+          </div>
+          <div class="mkt-card dn-bg">
+            <div class="mkt-lbl">SO MA GIAM</div>
+            <div class="mkt-val dn" id="mDown">—</div>
+          </div>
+          <div class="mkt-card">
+            <div class="mkt-lbl">A/D RATIO</div>
+            <div class="mkt-val" id="mAD">—</div>
+          </div>
+          <div class="mkt-card">
+            <div class="mkt-lbl">TREN MA20</div>
+            <div class="mkt-val" id="mMA20pct">—</div>
+            <div class="mkt-bar-bg"><div class="mkt-bar-fill" id="mMA20bar" style="width:0%"></div></div>
+          </div>
+          <div class="mkt-card">
+            <div class="mkt-lbl">TREN MA50</div>
+            <div class="mkt-val" id="mMA50pct">—</div>
+            <div class="mkt-bar-bg"><div class="mkt-bar-fill" id="mMA50bar" style="width:0%;background:var(--blue)"></div></div>
+          </div>
+        </div>
+
+        <!-- Period selector -->
+        <div class="mkt-ctrl">
+          <span style="font-size:9px;color:var(--gray2);letter-spacing:1px;">PERIOD:</span>
+          <div class="cgrp" id="breadthPerG">
+            <button class="cbtn" onclick="setBreadthPer(20,this)">1T</button>
+            <button class="cbtn active" onclick="setBreadthPer(60,this)">3T</button>
+            <button class="cbtn" onclick="setBreadthPer(120,this)">6T</button>
+          </div>
+          <button class="cbtn" onclick="loadBreadth()" style="margin-left:8px;border-color:var(--amber3);color:var(--amber);">↺ REFRESH</button>
+          <span id="mktDate" style="font-size:9px;color:var(--gray2);margin-left:auto;"></span>
+        </div>
+
+        <!-- Charts -->
+        <div class="mkt-charts" id="mktCharts">
+          <div class="empty"><div class="spin"></div><div class="empty-t">DANG TAI DU LIEU THI TRUONG...</div></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
-
-<!-- SCAN MODAL -->
 <div class="moverlay" id="scanModal">
   <div class="modal">
     <div class="mhdr">
@@ -931,6 +1010,153 @@ function toast(msg,err){var t=document.getElementById('toast');t.textContent=msg
 document.getElementById('addInp').addEventListener('keydown',function(e){if(e.key==='Enter')addStock();});
 document.getElementById('aiInp').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAi();}});
 
+// ── MARKET BREADTH ────────────────────────────────────────────────────────
+var breadthPer = 60;
+var breadthLoaded = false;
+var breadthCharts = {};
+
+function setBreadthPer(p, btn) {
+  breadthPer = p;
+  document.querySelectorAll('#breadthPerG .cbtn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  loadBreadth();
+}
+
+async function loadBreadth() {
+  if(document.getElementById('panel-market').style.display === 'none' &&
+     !document.getElementById('panel-market').classList.contains('active')) return;
+
+  var mktCharts = document.getElementById('mktCharts');
+  mktCharts.innerHTML = '<div class="empty"><div class="spin"></div><div class="empty-t">DANG QUET ' + BREADTH_SYMBOLS_COUNT + ' MA... (3-5 PHUT)</div></div>';
+
+  try {
+    var resp = await fetch('/api/breadth?days=' + breadthPer);
+    var data = await resp.json();
+    if(data.error) throw new Error(data.error);
+
+    // Update summary cards
+    var l = data.latest;
+    if(l) {
+      document.getElementById('mTotalSym').textContent = l.symbols_scanned || '—';
+      document.getElementById('mUp').textContent = l.up || '—';
+      document.getElementById('mDown').textContent = l.down || '—';
+      var ad = l.ad || 0;
+      var adEl = document.getElementById('mAD');
+      adEl.textContent = (ad >= 0 ? '+' : '') + ad;
+      adEl.style.color = ad >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('mMA20pct').textContent = l.ma20_pct + '%';
+      document.getElementById('mMA50pct').textContent = l.ma50_pct + '%';
+      document.getElementById('mMA20bar').style.width = l.ma20_pct + '%';
+      document.getElementById('mMA50bar').style.width = l.ma50_pct + '%';
+      document.getElementById('mMA20bar').style.background = l.ma20_pct > 50 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('mMA50bar').style.background = l.ma50_pct > 50 ? 'var(--blue)' : 'var(--amber)';
+      document.getElementById('mktDate').textContent = l.date || '';
+    }
+
+    // Render charts
+    renderBreadthCharts(data);
+    breadthLoaded = true;
+
+  } catch(e) {
+    mktCharts.innerHTML = '<div style="padding:20px;color:var(--red);font-size:11px;">LOI: ' + e.message + '</div>'
+      + '<button onclick="loadBreadth()" style="margin:10px;background:var(--amber3);border:none;color:black;font-family:var(--mono);font-size:10px;padding:6px 14px;cursor:pointer;">THU LAI</button>';
+  }
+}
+
+var BREADTH_SYMBOLS_COUNT = 300;
+
+function renderBreadthCharts(data) {
+  // Destroy old
+  Object.values(breadthCharts).forEach(function(c){try{c.destroy();}catch(e){}});
+  breadthCharts = {};
+
+  var mktCharts = document.getElementById('mktCharts');
+  var dates = data.dates.map(function(d){var p=d.split('-');return p[2]+'/'+p[1];});
+
+  mktCharts.innerHTML =
+    // Chart 1: A/D + VNI — full width
+    '<div class="mkt-chart-wrap">'
+    + '<div class="mkt-chart-title">◈ ADVANCE/DECLINE (SO MA TANG - GIAM) &nbsp;|&nbsp; <span style="color:#ffd700">— VNI OVERLAY</span></div>'
+    + '<canvas id="bcAD" class="mkt-chart-canvas"></canvas>'
+    + '</div>'
+    // Chart 2: MA20/MA50 % + VNI — full width
+    + '<div class="mkt-chart-wrap">'
+    + '<div class="mkt-chart-title">◈ % SO MA TREN MA20 <span style="color:#00cc44">━</span> &nbsp; MA50 <span style="color:#0088ff">━</span> &nbsp;|&nbsp; <span style="color:#ffd700">--- VNI</span> &nbsp;|&nbsp; Nguong 50% <span style="color:rgba(255,255,255,.3)">- -</span></div>'
+    + '<canvas id="bcMA" class="mkt-chart-canvas"></canvas>'
+    + '</div>'
+    // Chart 3: Up/Down stacked
+    + '<div class="mkt-chart-wrap">'
+    + '<div class="mkt-chart-title">◈ SO MA TANG <span style="color:#00cc44">▮</span> vs GIAM <span style="color:#ff2244">▮</span> THEO NGAY</div>'
+    + '<canvas id="bcUD" class="mkt-chart-canvas2"></canvas>'
+    + '</div>';
+
+  var gc = 'rgba(42,42,42,.8)', tc = '#555';
+  var cx = {ticks:{color:tc,font:{family:"'Roboto Mono'",size:8},maxTicksLimit:12,maxRotation:30,callback:function(v,i){return dates[i]||'';}},grid:{color:gc}};
+  var tt = {backgroundColor:'#111',borderColor:'#333',borderWidth:1,titleColor:'#888',bodyColor:'#e8e8e8',titleFont:{family:"'Roboto Mono'",size:8},bodyFont:{family:"'Roboto Mono'",size:9}};
+
+  // Normalize VNI for overlay (0-100 scale relative to min/max)
+  function normalizeVNI(vni) {
+    var valid = vni.filter(function(v){return v!=null;});
+    if(!valid.length) return vni.map(function(){return null;});
+    var mn = Math.min.apply(null,valid), mx = Math.max.apply(null,valid);
+    var range = mx - mn || 1;
+    return vni.map(function(v){return v==null?null:Math.round((v-mn)/range*100);});
+  }
+
+  var vniNorm = normalizeVNI(data.vni);
+  var adColors = data.ad.map(function(v){return v>=0?'rgba(0,204,68,.7)':'rgba(255,34,68,.7)';});
+
+  // Chart 1: A/D + VNI
+  breadthCharts.ad = new Chart(document.getElementById('bcAD'), {
+    type: 'bar',
+    data: { labels: dates, datasets: [
+      { type:'bar',  label:'A/D',   data:data.ad,   backgroundColor:adColors, borderWidth:0, yAxisID:'y' },
+      { type:'line', label:'VNI',   data:vniNorm,   borderColor:'#ffd700', borderWidth:1.5, pointRadius:0, fill:false, tension:.3, yAxisID:'y2', spanGaps:true },
+      { type:'line', label:'Zero',  data:new Array(dates.length).fill(0), borderColor:'rgba(255,255,255,.1)', borderWidth:1, borderDash:[2,2], pointRadius:0, fill:false, yAxisID:'y' },
+    ]},
+    options: { responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{display:true,labels:{color:tc,font:{family:"'Roboto Mono'",size:8},boxWidth:10}}, tooltip:{...tt} },
+      scales:{
+        x: cx,
+        y: { position:'left', ticks:{color:tc,font:{family:"'Roboto Mono'",size:8}}, grid:{color:gc} },
+        y2: { position:'right', min:0, max:100, ticks:{color:'#aa8800',font:{family:"'Roboto Mono'",size:8},callback:function(v){return v+'%';}}, grid:{display:false} }
+      }}
+  });
+
+  // Chart 2: MA20/MA50 % + VNI
+  breadthCharts.ma = new Chart(document.getElementById('bcMA'), {
+    type: 'line',
+    data: { labels: dates, datasets: [
+      { label:'%>MA20', data:data.ma20_pct, borderColor:'#00cc44', borderWidth:2, pointRadius:0, fill:false, tension:.3, yAxisID:'y' },
+      { label:'%>MA50', data:data.ma50_pct, borderColor:'#0088ff', borderWidth:2, pointRadius:0, fill:false, tension:.3, yAxisID:'y' },
+      { label:'50%',    data:new Array(dates.length).fill(50), borderColor:'rgba(255,255,255,.15)', borderWidth:1, borderDash:[4,3], pointRadius:0, fill:false, yAxisID:'y' },
+      { label:'VNI',    data:vniNorm, borderColor:'#ffd700', borderWidth:1.5, pointRadius:0, fill:false, tension:.3, yAxisID:'y2', spanGaps:true, borderDash:[3,2] },
+    ]},
+    options: { responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{display:true,labels:{color:tc,font:{family:"'Roboto Mono'",size:8},boxWidth:10}}, tooltip:{...tt} },
+      scales:{
+        x: cx,
+        y: { position:'left', min:0, max:100, ticks:{color:tc,font:{family:"'Roboto Mono'",size:8},callback:function(v){return v+'%';}}, grid:{color:gc} },
+        y2: { position:'right', min:0, max:100, ticks:{color:'#aa8800',font:{family:"'Roboto Mono'",size:8},callback:function(v){return v+'%';}}, grid:{display:false} }
+      }}
+  });
+
+  // Chart 3: Up vs Down stacked bars
+  breadthCharts.ud = new Chart(document.getElementById('bcUD'), {
+    type: 'bar',
+    data: { labels: dates, datasets: [
+      { label:'Tang', data:data.up,   backgroundColor:'rgba(0,204,68,.65)',  borderWidth:0 },
+      { label:'Giam', data:data.down.map(function(v){return -v;}), backgroundColor:'rgba(255,34,68,.65)', borderWidth:0 },
+    ]},
+    options: { responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{display:true,labels:{color:tc,font:{family:"'Roboto Mono'",size:8},boxWidth:10}}, tooltip:{...tt,callbacks:{label:function(ctx){return ctx.dataset.label+': '+Math.abs(ctx.raw);}}} },
+      scales:{
+        x: cx,
+        y: { position:'left', ticks:{color:tc,font:{family:"'Roboto Mono'",size:8},callback:function(v){return Math.abs(v);}}, grid:{color:gc} }
+      }}
+  });
+}
+
 async function init(){
   renderWL();
   document.getElementById('vpaLegend').style.display='flex';
@@ -950,4 +1176,3 @@ setInterval(async function(){
 </script>
 </body>
 </html>
- 

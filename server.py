@@ -587,6 +587,163 @@ def scan_stocks():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+# ── MARKET BREADTH ───────────────────────────────────────────────────────────
+# FireAnt token
+FIREANT_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkdYdExONzViZlZQakdvNERWdjV4QkRITHpnSSIsImtpZCI6IkdYdExONzViZlZQakdvNERWdjV4QkRITHpnSSJ9.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmZpcmVhbnQudm4iLCJhdWQiOiJodHRwczovL2FjY291bnRzLmZpcmVhbnQudm4vcmVzb3VyY2VzIiwiZXhwIjoxODg5NjIyNTMwLCJuYmYiOjE1ODk2MjI1MzAsImNsaWVudF9pZCI6ImZpcmVhbnQudHJhZGVzdGF0aW9uIiwic2NvcGUiOlsiYWNhZGVteS1yZWFkIiwiYWNhZGVteS13cml0ZSIsImFjY291bnRzLXJlYWQiLCJhY2NvdW50cy13cml0ZSIsImJsb2ctcmVhZCIsImNvbXBhbmllcy1yZWFkIiwiZmluYW5jZS1yZWFkIiwiaW5kaXZpZHVhbHMtcmVhZCIsImludmVzdG9wZWRpYS1yZWFkIiwib3JkZXJzLXJlYWQiLCJvcmRlcnMtd3JpdGUiLCJwb3N0cy1yZWFkIiwicG9zdHMtd3JpdGUiLCJzZWFyY2giLCJzeW1ib2xzLXJlYWQiLCJ1c2VyLWRhdGEtcmVhZCIsInVzZXItZGF0YS13cml0ZSIsInVzZXJzLXJlYWQiXSwianRpIjoiMjYxYTZhYWQ2MTQ5Njk1ZmJiYzcwODM5MjM0Njc1NWQifQ.dA5-HVzWv-BRfEiAd24uNBiBxASO-PAyWeWESovZm_hj4aXMAZA1-bWNZeXt88dqogo18AwpDQ-h6gefLPdZSFrG5umC1dVWaeYvUnGm62g4XS29fj6p01dhKNNqrsu5KrhnhdnKYVv9VdmbmqDfWR8wDgglk5cJFqalzq6dJWJInFQEPmUs9BW_Zs8tQDn-i5r4tYq2U8vCdqptXoM7YgPllXaPVDeccC9QNu2Xlp9WUvoROzoQXg25lFub1IYkTrM66gJ6t9fJRZToewCt495WNEOQFa_rwLCZ1QwzvL0iYkONHS_jZ0BOhBCdW9dWSawD6iF1SIQaFROvMDH1rg'
+
+BREADTH_SYMBOLS = list(set([
+    "ACB","BCM","BID","BVH","CTG","FPT","GAS","GVR","HDB","HPG",
+    "MBB","MSN","MWG","NVL","PDR","PLX","PNJ","POW","SAB","SHB",
+    "SSI","STB","TCB","TPB","VCB","VHM","VIB","VIC","VJC","VNM",
+    "VPB","VRE","VND","DXG","KDH","LPB","OCB","REE","SJS","VCI",
+    "AGG","AGR","AMD","ANV","ASM","BCG","BSR","BWE","CAV","CEO",
+    "CII","CMG","CMX","CNG","CSV","CTD","CTI","CTR","DAG","DAT",
+    "DBC","DCM","DGC","DGW","DHC","DIG","DPG","DPM","DPR","DRC",
+    "EIB","ELC","EVE","EVF","FLC","GDT","GEG","GEX","GMD","HAG",
+    "HAH","HAX","HBC","HCM","HDC","HDG","HHP","HHS","HID","HLD",
+    "HMC","HNG","HPX","HQC","HTN","HVN","ICT","IDC","IDI","IJC",
+    "IMP","IPA","IPH","ITC","IVS","KBC","KDC","KHG","KOS","KSB",
+    "KTC","LCG","LDG","LEC","LGC","LHG","LIX","LSS","LTG","MCP",
+    "MDG","MIG","MSB","MST","MTV","NAB","NAF","NAG","NBB","NCT",
+    "NKG","NLG","NNC","NSC","NT2","NTL","NVB","NVT","OGC","OPC",
+    "PAC","PAN","PC1","PCT","PET","PGC","PGD","PGI","PGV","PHC",
+    "PHR","PIT","PJT","PLC","POM","PRC","PRE","PSH","PSI","PTC",
+    "PTL","PVD","PVI","PVP","PVS","PVT","QCG","QNS","RAL","RDP",
+    "RIC","SAF","SAM","SAV","SBT","SC5","SCD","SCR","SCS","SDG",
+    "SDT","SEA","SGN","SGT","SHI","SHP","SIC","SII","SKG","SLS",
+    "SMB","SMC","SPM","SRF","SSB","SSC","STC","STG","STK","STP",
+    "SVD","SZC","SZG","TAC","TBC","TCH","TCL","TCM","TDG","TDH",
+    "TDM","TDP","TDW","TEG","TIG","TIX","TLG","TLH","TMP","TMS",
+    "TMT","TNA","TNT","TON","TPC","TRA","TRC","TSC","TTB","TTC",
+    "TTF","TTP","TV2","TVD","TVS","TYA","UDC","UIC","VCA","VCF",
+    "VCG","VCS","VDS","VFG","VGC","VGS","VGT","VHC","VHL","VID",
+    "VIP","VIR","VIX","VMC","VMD","VNE","VNL","VNS","VNT","VOS",
+    "VPG","VPH","VPI","VPS","VRC","VRG","VSC","VSG","VSH","VTB",
+    "VTJ","VTO","VTS","YEG","NKG","VGI","HUT","DXS",
+]))
+
+@app.route('/api/breadth')
+def get_breadth():
+    try:
+        import requests as req
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from collections import defaultdict
+
+        days = int(request.args.get('days', 60))
+        end_dt   = datetime.today()
+        start_dt = end_dt - timedelta(days=days+60)
+        end_str   = end_dt.strftime('%Y-%m-%d')
+        start_str = start_dt.strftime('%Y-%m-%d')
+
+        headers = {
+            'Authorization': 'Bearer ' + FIREANT_TOKEN,
+            'Content-Type': 'application/json'
+        }
+
+        def sma(arr, n):
+            result = []
+            for i in range(len(arr)):
+                if i < n-1: result.append(None)
+                else: result.append(sum(arr[i-n+1:i+1]) / n)
+            return result
+
+        def check_sym_fireant(sym):
+            try:
+                url = f'https://restv2.fireant.vn/symbols/{sym}/historical-quotes'
+                params = {
+                    'startDate': start_str,
+                    'endDate':   end_str,
+                    'offset': 0,
+                    'limit': 200,
+                    'type': 1
+                }
+                r = req.get(url, headers=headers, params=params, timeout=10)
+                if r.status_code != 200: return None
+                data = r.json()
+                if not data or len(data) < 25: return None
+
+                # FireAnt returns newest first, reverse
+                data = list(reversed(data))
+                closes = [float(d['priceClose']) for d in data]
+                dates  = [str(d['date'])[:10] for d in data]
+                ma20 = sma(closes, 20)
+                ma50 = sma(closes, 50)
+
+                daily = []
+                for i in range(len(closes)):
+                    if ma20[i] is None or ma50[i] is None: continue
+                    chg = (closes[i]-closes[i-1])/closes[i-1]*100 if i > 0 else 0
+                    daily.append({
+                        'date': dates[i],
+                        'above_ma20': closes[i] > ma20[i],
+                        'above_ma50': closes[i] > ma50[i],
+                        'up': chg > 0.5,
+                        'down': chg < -0.5,
+                    })
+                return daily
+            except: return None
+
+        all_data = {}
+        with ThreadPoolExecutor(max_workers=30) as ex:
+            futures = {ex.submit(check_sym_fireant, s): s for s in BREADTH_SYMBOLS}
+            for f in as_completed(futures):
+                r = f.result()
+                if r: all_data[futures[f]] = r
+
+        if not all_data:
+            return jsonify({'error': 'No data from FireAnt'}), 500
+
+        date_agg = defaultdict(lambda: {'up':0,'down':0,'flat':0,'above_ma20':0,'below_ma20':0,'above_ma50':0,'below_ma50':0,'total':0})
+        for sym, daily in all_data.items():
+            for d in daily:
+                dt = d['date']
+                date_agg[dt]['total'] += 1
+                if d['up']:        date_agg[dt]['up']   += 1
+                elif d['down']:    date_agg[dt]['down']  += 1
+                else:              date_agg[dt]['flat']  += 1
+                if d['above_ma20']: date_agg[dt]['above_ma20'] += 1
+                else:               date_agg[dt]['below_ma20'] += 1
+                if d['above_ma50']: date_agg[dt]['above_ma50'] += 1
+                else:               date_agg[dt]['below_ma50'] += 1
+
+        sorted_dates = sorted(date_agg.keys())[-days:]
+        rdates, rup, rdown, rad, rma20, rma50, rtotal = [],[],[],[],[],[],[]
+        for dt in sorted_dates:
+            a = date_agg[dt]
+            if a['total'] < 10: continue
+            rdates.append(dt); rup.append(a['up']); rdown.append(a['down'])
+            rad.append(a['up']-a['down'])
+            rma20.append(round(a['above_ma20']/a['total']*100,1))
+            rma50.append(round(a['above_ma50']/a['total']*100,1))
+            rtotal.append(a['total'])
+
+        # VNI overlay via FireAnt
+        vni = [None]*len(rdates)
+        try:
+            r = req.get('https://restv2.fireant.vn/symbols/VNINDEX/historical-quotes',
+                        headers=headers,
+                        params={'startDate':start_str,'endDate':end_str,'offset':0,'limit':200,'type':1},
+                        timeout=10)
+            if r.status_code == 200:
+                vni_data = list(reversed(r.json()))
+                vm = {str(d['date'])[:10]: float(d['priceClose']) for d in vni_data}
+                vni = [vm.get(dt) for dt in rdates]
+        except: pass
+
+        latest = {}
+        if rdates:
+            latest = {'date':rdates[-1],'up':rup[-1],'down':rdown[-1],'ad':rad[-1],
+                      'ma20_pct':rma20[-1],'ma50_pct':rma50[-1],'total':rtotal[-1],
+                      'symbols_scanned':len(all_data)}
+
+        return jsonify({'dates':rdates,'up':rup,'down':rdown,'ad':rad,
+                        'ma20_pct':rma20,'ma50_pct':rma50,'total':rtotal,
+                        'vni':vni,'latest':latest})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("="*50)
@@ -594,3 +751,4 @@ if __name__ == '__main__':
     print(f"  http://localhost:{port}")
     print("="*50)
     app.run(host='0.0.0.0', port=port, debug=False)
+ 
