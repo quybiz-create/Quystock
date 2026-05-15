@@ -1298,7 +1298,7 @@ def acc_scan():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8080))
     print("="*50)
     print("  QuyStock Pro — VPA Edition")
     print(f"  http://localhost:{port}")

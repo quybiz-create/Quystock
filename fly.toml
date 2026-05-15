@@ -1,12 +1,10 @@
-# fly.toml app configuration file generated for stockalert on 2026-05-15T08:20:36+07:00
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
 app = 'stockalert'
 primary_region = 'nrt'
 
 [build]
+
+[processes]
+  app = "python server.py"
 
 [http_service]
   internal_port = 8080
@@ -20,4 +18,3 @@ primary_region = 'nrt'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 1024
