@@ -492,7 +492,7 @@ def ai_analyze():
         import requests as req
         data     = request.get_json()
         prompt   = data.get('prompt', '')
-        groq_key = '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'
+        groq_key = os.environ.get('GROQ_KEY', '')
         r = req.post(
             'https://api.groq.com/openai/v1/chat/completions',
             headers={'Authorization':'Bearer '+groq_key,'Content-Type':'application/json'},
