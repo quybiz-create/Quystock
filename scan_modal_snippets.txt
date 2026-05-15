@@ -1,0 +1,180 @@
+<!-- ===================================================== -->
+<!-- BUOC 1: THEM CSS NAY VAO CUOI <style> (truoc </style>) -->
+<!-- ===================================================== -->
+/*
+/* SCAN MODAL */
+.scan-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:500;display:none;align-items:center;justify-content:center;}
+.scan-modal-overlay.show{display:flex;}
+.scan-modal{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;width:90%;max-width:700px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;}
+.scan-modal-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.scan-modal-title{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);letter-spacing:1px;}
+.scan-modal-close{background:transparent;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0 4px;}
+.scan-modal-close:hover{color:var(--red);}
+.scan-modal-body{flex:1;overflow-y:auto;padding:12px 16px;}
+.scan-modal-body::-webkit-scrollbar{width:3px;}
+.scan-modal-body::-webkit-scrollbar-thumb{background:var(--border2);}
+.scan-status{font-family:var(--mono);font-size:11px;color:var(--text3);padding:8px 0;display:flex;align-items:center;gap:8px;}
+.scan-table{width:100%;border-collapse:collapse;font-family:var(--mono);}
+.scan-table th{font-size:9px;color:var(--text3);letter-spacing:1px;padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;}
+.scan-table td{font-size:12px;padding:7px 8px;border-bottom:1px solid var(--border);cursor:pointer;}
+.scan-table tr:hover td{background:var(--bg3);}
+.scan-table .sym-col{color:var(--accent);font-weight:600;font-size:13px;}
+.scan-btn-top{background:var(--bg3);border:1px solid var(--border2);border-radius:4px;color:var(--accent);font-family:var(--mono);font-size:10px;padding:4px 12px;cursor:pointer;letter-spacing:1px;}
+.scan-btn-top:hover{border-color:var(--accent);}
+.scan-progress{height:2px;background:var(--border);border-radius:1px;margin:8px 0;}
+.scan-progress-bar{height:100%;background:var(--accent);border-radius:1px;width:0%;transition:width 0.3s;}
+.scan-filter-row{display:flex;gap:8px;align-items:center;padding:8px 0;flex-wrap:wrap;}
+.scan-filter-label{font-family:var(--mono);font-size:10px;color:var(--text3);}
+.scan-sort-btn{background:transparent;border:1px solid var(--border2);border-radius:3px;color:var(--text2);font-family:var(--mono);font-size:9px;padding:2px 8px;cursor:pointer;}
+.scan-sort-btn.active{background:var(--accent2);border-color:var(--accent2);color:white;}
+*/
+
+<!-- ===================================================== -->
+<!-- BUOC 2: THEM NUT SCAN VAO .tab-bar (sau nut "1N") -->
+<!-- Them sau dong: <button class="ctrl-btn" onclick="setPeriod(250,this)">1N</button> -->
+<!-- ===================================================== -->
+<!--
+      <div class="ctrl-sep"></div>
+      <button class="scan-btn-top" onclick="openScanModal()">🔍 SCAN</button>
+-->
+
+<!-- ===================================================== -->
+<!-- BUOC 3: THEM MODAL HTML TRUOC THE </body> -->
+<!-- ===================================================== -->
+<!--
+<div class="scan-modal-overlay" id="scanOverlay">
+  <div class="scan-modal">
+    <div class="scan-modal-header">
+      <div>
+        <div class="scan-modal-title">🔍 BỘ LỌC CỔ PHIẾU — HoSE + HNX</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:2px;">Dieu kien: Gia > MA20 | MA20 doc len | MACD cat Signal len</div>
+      </div>
+      <button class="scan-modal-close" onclick="closeScanModal()">✕</button>
+    </div>
+    <div class="scan-modal-body" id="scanBody">
+      <div style="text-align:center;padding:40px 0;">
+        <div style="font-family:var(--mono);font-size:12px;color:var(--text3);margin-bottom:12px;">Nhan SCAN de bat dau quet ~500 ma co phieu</div>
+        <button onclick="startScan()" style="background:var(--accent2);border:none;border-radius:6px;color:white;font-family:var(--mono);font-size:12px;padding:10px 24px;cursor:pointer;letter-spacing:1px;">▶ BAT DAU SCAN</button>
+      </div>
+    </div>
+  </div>
+</div>
+-->
+
+<!-- ===================================================== -->
+<!-- BUOC 4: THEM JAVASCRIPT NAY TRUOC </script> CUOI CUNG -->
+<!-- ===================================================== -->
+<!--
+var scanResults = [];
+var scanSortBy = 'above_ma20_pct';
+
+function openScanModal() {
+  document.getElementById('scanOverlay').classList.add('show');
+  if (scanResults.length > 0) renderScanResults();
+}
+
+function closeScanModal() {
+  document.getElementById('scanOverlay').classList.remove('show');
+}
+
+async function startScan() {
+  var body = document.getElementById('scanBody');
+  body.innerHTML = 
+    '<div class="scan-status"><div class="spinner"></div><span>Dang quet HoSE + HNX... Co the mat 2-5 phut</span></div>'
+    + '<div class="scan-progress"><div class="scan-progress-bar" id="scanBar"></div></div>'
+    + '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:8px;" id="scanNote">Dang ket noi server va quet du lieu...</div>';
+  
+  // Fake progress animation
+  var prog = 0;
+  var progInterval = setInterval(function() {
+    prog = Math.min(prog + Math.random() * 3, 90);
+    var bar = document.getElementById('scanBar');
+    if (bar) bar.style.width = prog + '%';
+  }, 1000);
+
+  try {
+    var resp = await fetch('/api/scan');
+    var data = await resp.json();
+    clearInterval(progInterval);
+    var bar = document.getElementById('scanBar');
+    if (bar) bar.style.width = '100%';
+    
+    if (data.error) throw new Error(data.error);
+    scanResults = data.results;
+    setTimeout(function() { renderScanResults(data); }, 300);
+  } catch(e) {
+    clearInterval(progInterval);
+    body.innerHTML = '<div style="font-family:var(--mono);font-size:12px;color:var(--red);padding:20px;">Loi: ' + e.message + '</div>'
+      + '<button onclick="startScan()" style="margin:10px;background:var(--accent2);border:none;border-radius:6px;color:white;font-family:var(--mono);font-size:11px;padding:8px 16px;cursor:pointer;">Thu lai</button>';
+  }
+}
+
+function renderScanResults(data) {
+  var body = document.getElementById('scanBody');
+  var results = scanResults;
+  
+  // Sort
+  results = results.slice().sort(function(a, b) {
+    if (scanSortBy === 'pct') return b.pct - a.pct;
+    if (scanSortBy === 'volume') return b.volume - a.volume;
+    if (scanSortBy === 'macd') return b.macd - a.macd;
+    return b.above_ma20_pct - a.above_ma20_pct;
+  });
+
+  var totalScanned = data ? data.total_scanned : '~500+';
+  var html = '<div class="scan-filter-row">'
+    + '<span class="scan-filter-label">Tim thay: <b style="color:var(--green)">' + results.length + '</b> / ' + totalScanned + ' ma</span>'
+    + '<span class="scan-filter-label" style="margin-left:auto;">Sap xep:</span>'
+    + '<button class="scan-sort-btn' + (scanSortBy==='above_ma20_pct'?' active':'') + '" onclick="setScanSort(\'above_ma20_pct\')">% vuot MA20</button>'
+    + '<button class="scan-sort-btn' + (scanSortBy==='pct'?' active':'') + '" onclick="setScanSort(\'pct\')">% thay doi</button>'
+    + '<button class="scan-sort-btn' + (scanSortBy==='volume'?' active':'') + '" onclick="setScanSort(\'volume\')">Volume</button>'
+    + '<button class="scan-sort-btn' + (scanSortBy==='macd'?' active':'') + '" onclick="setScanSort(\'macd\')">MACD</button>'
+    + '<button onclick="startScan()" style="background:transparent;border:1px solid var(--accent2);border-radius:3px;color:var(--accent);font-family:var(--mono);font-size:9px;padding:2px 8px;cursor:pointer;">↺ QUET LAI</button>'
+    + '</div>';
+
+  if (results.length === 0) {
+    html += '<div style="text-align:center;padding:30px;font-family:var(--mono);font-size:12px;color:var(--text3);">Khong tim thay co phieu nao thoa dieu kien</div>';
+  } else {
+    html += '<table class="scan-table">'
+      + '<thead><tr>'
+      + '<th>MA</th><th>GIA</th><th>MA20</th><th>% VUOT MA20</th><th>% NGAY</th><th>MACD</th><th>VOL (tr)</th>'
+      + '</tr></thead><tbody>';
+    
+    results.forEach(function(r) {
+      var pctColor = r.pct >= 0 ? 'var(--green)' : 'var(--red)';
+      var pctSign = r.pct >= 0 ? '+' : '';
+      var macdColor = r.macd > r.signal ? 'var(--green)' : 'var(--red)';
+      html += '<tr onclick="selectFromScan(\'' + r.symbol + '\')">'
+        + '<td class="sym-col">' + r.symbol + '</td>'
+        + '<td>' + r.close.toLocaleString() + '</td>'
+        + '<td style="color:var(--yellow)">' + r.ma20.toLocaleString() + '</td>'
+        + '<td style="color:var(--green)">+' + r.above_ma20_pct + '%</td>'
+        + '<td style="color:' + pctColor + '">' + pctSign + r.pct + '%</td>'
+        + '<td style="color:' + macdColor + '">' + r.macd + '</td>'
+        + '<td style="color:var(--text2)">' + (r.volume/1e6).toFixed(1) + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+  }
+  body.innerHTML = html;
+}
+
+function setScanSort(by) {
+  scanSortBy = by;
+  renderScanResults();
+}
+
+function selectFromScan(sym) {
+  closeScanModal();
+  if (watchlist.indexOf(sym) < 0) {
+    watchlist.push(sym);
+    saveList();
+  }
+  selectStock(sym);
+}
+
+// Close modal khi click outside
+document.getElementById('scanOverlay').addEventListener('click', function(e) {
+  if (e.target === this) closeScanModal();
+});
+-->
