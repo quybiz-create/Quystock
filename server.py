@@ -542,47 +542,89 @@ SCAN_SYMBOLS = list(set([
 @app.route('/api/scan')
 def scan_stocks():
     try:
-        from vnstock.api.quote import Quote
+        import requests as req
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        end   = datetime.today().strftime('%Y-%m-%d')
-        start = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
+        import numpy as np
 
-        def ema(arr, n):
-            k, out = 2/(n+1), [arr[0]]
-            for i in range(1, len(arr)):
-                out.append(arr[i]*k + out[-1]*(1-k))
-            return out
+        end   = datetime.today().strftime('%Y-%m-%d')
+        start = (datetime.today() - timedelta(days=60)).strftime('%Y-%m-%d')
+        headers = {'Authorization': 'Bearer ' + FIREANT_TOKEN}
 
         def sma(arr, n):
-            return [None if i<n-1 else sum(arr[i-n+1:i+1])/n for i in range(len(arr))]
+            r = np.full(len(arr), np.nan)
+            for i in range(n-1, len(arr)):
+                r[i] = np.mean(arr[i-n+1:i+1])
+            return r
 
-        def check(sym):
+        def check_dongTien(sym):
             try:
-                df = Quote(symbol=sym, source='VCI').history(start=start, end=end, interval='1D')
-                if df is None or df.empty or len(df) < 30: return None
-                closes = list(df['close'].values.astype(float))
-                vols   = list(df['volume'].values)
-                ma20 = sma(closes, 20)
-                if ma20[-1] is None or closes[-1] <= ma20[-1]: return None
-                e12  = ema(closes, 12); e26 = ema(closes, 26)
-                macd = [e12[i]-e26[i] for i in range(len(closes))]
-                sig  = ema(macd, 9)
-                if macd[-1] <= sig[-1]: return None
-                pct = (closes[-1]-closes[-2])/closes[-2]*100
-                vol = int(float(vols[-1]))
-                if vol < 1000: vol = vol * 1000
-                return {'symbol':sym,'close':round(closes[-1],2),'ma20':round(ma20[-1],2),
-                        'pct':round(pct,2),'volume':vol,'macd':round(macd[-1],2),
-                        'signal_line':round(sig[-1],2),'above_ma20_pct':round((closes[-1]-ma20[-1])/ma20[-1]*100,2)}
+                url = f'https://restv2.fireant.vn/symbols/{sym}/historical-quotes'
+                r = req.get(url, headers=headers,
+                    params={'startDate':start,'endDate':end,'offset':0,'limit':60,'type':1},
+                    timeout=8)
+                if r.status_code != 200: return None
+                data = list(reversed(r.json()))
+                if not data or len(data) < 12: return None
+
+                c = np.array([d['priceClose'] for d in data], dtype=float)
+                v = np.array([d.get('dealVolume', d.get('totalVolume',0)) for d in data], dtype=float)
+                n = len(c)
+                i = n - 1  # last bar
+
+                price = float(c[i])  # Đơn vị: nghìn đồng (VD: 59.8 = 59,800đ)
+                vol   = float(v[i])
+
+                # DK1: Volume > 100,000
+                if vol < 100000: return None
+
+                # DK2: Giá > 5 nghìn đồng (price > 5)
+                if price < 5: return None
+
+                # DK3: Volume > 80% trung bình 10 phiên
+                if i < 10: return None
+                ma_vol10 = np.mean(v[i-10:i])
+                if ma_vol10 == 0: return None
+                if vol < 0.8 * ma_vol10: return None
+
+                # DK4: Giá tăng > 1.5% so với phiên trước
+                if i < 1: return None
+                prev_close = float(c[i-1])
+                if prev_close == 0: return None
+                pct = (price - prev_close) / prev_close * 100
+                if pct < 1.5: return None
+
+                # DK6: Giá > MA5
+                ma5 = np.mean(c[max(0,i-4):i+1])
+                if ma5 == 0: return None
+                if price < ma5: return None
+
+                vol_ratio = round(vol / ma_vol10, 2) if ma_vol10 > 0 else 0
+
+                return {
+                    'symbol':    sym,
+                    'close':     round(price * 1000, 0),  # Hiển thị đồng
+                    'pct':       round(pct, 2),
+                    'volume':    int(vol),
+                    'vol_ratio': vol_ratio,
+                    'ma5':       round(float(ma5) * 1000, 0),
+                    'above_ma5_pct': round((price - ma5) / ma5 * 100, 2),
+                }
             except: return None
 
         results = []
-        with ThreadPoolExecutor(max_workers=20) as ex:
-            for f in as_completed({ex.submit(check,s):s for s in SCAN_SYMBOLS}):
+        with ThreadPoolExecutor(max_workers=30) as ex:
+            futures = {ex.submit(check_dongTien, s): s for s in BREADTH_SYMBOLS}
+            for f in as_completed(futures):
                 r = f.result()
                 if r: results.append(r)
-        results.sort(key=lambda x: x['above_ma20_pct'], reverse=True)
-        return jsonify({'count':len(results),'total_scanned':len(SCAN_SYMBOLS),'results':results})
+
+        # Sort: ưu tiên volume cao + giá tăng mạnh
+        results.sort(key=lambda x: (x['vol_ratio'], x['pct']), reverse=True)
+        return jsonify({
+            'count': len(results),
+            'total_scanned': len(BREADTH_SYMBOLS),
+            'results': results
+        })
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
