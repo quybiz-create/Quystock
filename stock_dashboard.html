@@ -957,9 +957,26 @@ function removeStock(sym,e){
   renderWL();toast('Da xoa '+sym);}
 
 async function loadStock(sym){
-  try{var r=await fetch(API+'/history/'+sym+'?days=300');var j=await r.json();
-    priceCache[sym]=j.data;renderWL();return j.data;}
-  catch(e){toast('Loi tai '+sym,true);watchlist=watchlist.filter(function(s){return s!==sym;});saveWL();renderWL();return null;}}
+  try{
+    var r=await fetch(API+'/history/'+sym+'?days=300');
+    var j=await r.json();
+    if(!j.data || j.data.length===0) {
+      toast('Ma "'+sym+'" khong ton tai!', true);
+      watchlist=watchlist.filter(function(s){return s!==sym;});
+      saveWL(); renderWL();
+      document.getElementById('chartsArea').innerHTML='<div class="empty"><div class="empty-s">⚠</div><div class="empty-t">MA "'+sym+'" KHONG TON TAI</div></div>';
+      return null;
+    }
+    priceCache[sym]=j.data; renderWL(); return j.data;
+  }
+  catch(e){
+    toast('Loi tai '+sym+'!', true);
+    watchlist=watchlist.filter(function(s){return s!==sym;});
+    saveWL(); renderWL();
+    document.getElementById('chartsArea').innerHTML='<div class="empty"><div class="empty-s">⚠</div><div class="empty-t">LOI KET NOI — THU LAI</div></div>';
+    return null;
+  }
+}
 
 async function selectStock(sym){
   curSym=sym;renderWL();
