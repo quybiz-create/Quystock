@@ -2520,11 +2520,12 @@ async function syncPortfolio() {
           var j = await r.json();
           if(j.record && j.record.pin === pin) {
             var pdata = j.record.portfolio || [];
-            portfolio = pdata.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,currentPrice:null};});
-            localStorage.setItem('qs_portfolio', JSON.stringify(pdata));
-            await refreshPortfolioPrices();
+            portfolio = pdata.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,date:p.date||'—',currentPrice:null};});
+            localStorage.setItem('qs_portfolio', JSON.stringify(portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,date:p.date||'—'};})));
+            renderPortfolio();
             toast('Da tai danh muc! '+portfolio.length+' ma.');
-            // Always show QR for mobile sync
+            // Refresh prices in background (non-blocking)
+            setTimeout(function(){refreshPortfolioPrices();}, 500);
             showSyncQR(pin, savedBinId);
             return;
           }
@@ -2740,12 +2741,16 @@ async function init(){
         var j = await r.json();
         if(j.record && j.record.portfolio) {
           var pdata = j.record.portfolio;
-          portfolio = pdata.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,currentPrice:null};});
-          localStorage.setItem('qs_portfolio', JSON.stringify(pdata));
+          portfolio = pdata.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,date:p.date||'—',currentPrice:null};});
+          // Save with date field preserved
+          localStorage.setItem('qs_portfolio', JSON.stringify(portfolio.map(function(p){return {sym:p.sym,cost:p.cost,qty:p.qty,date:p.date||'—'};})));
+          renderPortfolio();
           toast('Da tai danh muc tu QR! '+portfolio.length+' ma.');
+          // Non-blocking price refresh
+          setTimeout(function(){refreshPortfolioPrices();}, 1000);
         }
       }
-    } catch(e) {}
+    } catch(e) { toast('Loi tai danh muc!', true); }
     // Clean URL
     window.history.replaceState({}, '', location.pathname);
   }
@@ -2754,8 +2759,8 @@ async function init(){
   if(sm)sm.addEventListener('click',function(e){if(e.target===this)closeScan();});
   var cm=document.getElementById('compareModal');
   if(cm)cm.addEventListener('click',function(e){if(e.target===this)closeCompare();});
-  // Load portfolio prices if any saved
-  if(portfolio.length > 0) refreshPortfolioPrices();
+  // Load portfolio prices in background (non-blocking)
+  if(portfolio.length > 0) setTimeout(function(){refreshPortfolioPrices();}, 2000);
   renderWL();
   document.getElementById('vpaLegend').style.display='flex';
   var online=await checkServer();
