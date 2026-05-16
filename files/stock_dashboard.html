@@ -14,7 +14,7 @@
   --amber:#ff9500;--amber2:#ffb340;--amber3:#cc7700;
   --green:#00cc44;--green2:#00ff55;--red:#ff2244;--red2:#ff4466;
   --blue:#0088ff;--cyan:#00ccff;--purple:#a78bfa;
-  --white:#f0f0f0;--gray1:#bbbbbb;--gray2:#888888;
+  --white:#e8e8e8;--gray1:#888;--gray2:#555;
   --mono:'Roboto Mono',monospace;--tech:'Share Tech Mono',monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -74,7 +74,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 .add-row{padding:7px 10px;border-top:1px solid var(--border);display:flex;gap:4px;}
 .add-inp{flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--amber);font-family:var(--mono);font-size:11px;padding:4px 6px;outline:none;text-transform:uppercase;}
 .add-inp:focus{border-color:var(--amber);}
-.add-inp::placeholder{color:#777;text-transform:none;font-size:9px;}
+.add-inp::placeholder{color:var(--gray2);text-transform:none;font-size:9px;}
 .add-btn{background:var(--amber3);border:none;color:var(--black);font-size:14px;font-weight:700;width:24px;cursor:pointer;}
 .add-btn:hover{background:var(--amber);}
 
@@ -95,8 +95,8 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 
 .tabbar{background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 8px;gap:0;overflow-x:auto;flex-shrink:0;}
 .tabbar::-webkit-scrollbar{height:0;}
-.tab-btn{background:transparent;border:none;border-bottom:2px solid transparent;color:#aaaaaa;font-family:var(--mono);font-size:11px;padding:8px 12px;cursor:pointer;letter-spacing:1px;white-space:nowrap;}
-.tab-btn.active{color:var(--amber);border-bottom-color:var(--amber);font-weight:700;}
+.tab-btn{background:transparent;border:none;border-bottom:2px solid transparent;color:#aaaaaa;font-family:var(--mono);font-size:10px;padding:6px 10px;cursor:pointer;letter-spacing:1px;white-space:nowrap;}
+.tab-btn.active{color:var(--amber);border-bottom-color:var(--amber);}
 .tab-btn:hover{color:var(--amber2);}
 .tb-sep{width:1px;height:14px;background:var(--border2);margin:0 4px;flex-shrink:0;}
 .cgrp{display:flex;gap:2px;flex-shrink:0;}
@@ -307,7 +307,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 .pf-lbl{font-size:7px;color:var(--gray2);letter-spacing:1px;}
 .pf-inp{background:var(--bg3);border:1px solid var(--border2);color:var(--white);font-family:var(--mono);font-size:11px;padding:5px 8px;outline:none;width:100%;text-transform:uppercase;}
 .pf-inp:focus{border-color:var(--amber);}
-.pf-inp::placeholder{color:#777;text-transform:none;}
+.pf-inp::placeholder{color:var(--gray2);text-transform:none;}
 .pf-add-btn{background:var(--amber3);border:none;color:var(--black);font-family:var(--mono);font-size:9px;font-weight:700;padding:6px 10px;cursor:pointer;letter-spacing:1px;white-space:nowrap;flex-shrink:0;}
 .pf-add-btn:hover{background:var(--amber);}
 .pf-table-wrap{flex-shrink:0;overflow-x:auto;padding:10px 12px;}
@@ -449,12 +449,10 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 
     <div class="tabbar">
       <button class="tab-btn active" onclick="switchTab('chart',this)">BIEU DO</button>
-      <button class="tab-btn" onclick="openScan()">◈ SCAN</button>
-      <button class="tab-btn" onclick="openCompare()">⇄ SO SANH</button>
+      <button class="tab-btn" onclick="switchTab('fund',this)">TAI CHINH</button>
+      <button class="tab-btn" onclick="switchTab('ai',this)">PHAN TICH AI</button>
       <button class="tab-btn" onclick="switchTab('market',this);loadBreadth()">MARKET</button>
       <button class="tab-btn" onclick="switchTab('portfolio',this);refreshPortfolioPrices()">DANH MUC</button>
-      <button class="tab-btn" onclick="switchTab('fund',this)">TAI CHINH</button>
-      <button class="tab-btn" onclick="switchTab('ai',this)">AI</button>
       <button class="tab-btn" onclick="switchTab('backtest',this)">BACKTEST</button>
       <div class="tb-sep"></div>
       <div class="cgrp" id="typeG">
@@ -477,11 +475,13 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
       <div class="cgrp">
         <button class="cbtn active" onclick="togInd('ma',this)">MA</button>
         <button class="cbtn" onclick="togInd('bb',this)">BB</button>
-        <button class="cbtn" onclick="togInd('sr',this)">S/R</button>
+        <button class="cbtn active" onclick="togInd('sr',this)">S/R</button>
         <button class="cbtn" onclick="togInd('fibo',this)">FIBO</button>
-        <button class="cbtn" onclick="togInd('st',this)">ST</button>
-        <button class="cbtn" onclick="togInd('trend',this)">TREND</button>
+        <button class="cbtn active" onclick="togInd('st',this)">ST</button>
+        <button class="cbtn active" onclick="togInd('trend',this)">TREND</button>
       </div>
+      <button class="scan-tb" onclick="openScan()">◈ SCAN</button>
+      <button class="scan-tb" onclick="openCompare()" style="border-color:var(--cyan);color:var(--cyan);">⇄ SO SANH</button>
     </div>
 
     <!-- VPA LEGEND -->
@@ -822,7 +822,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 
 <script>
 var API='/api',curSym=null,allData=[],chartType='candle',period=120,chartMode='vpa';
-var showMA=true,showBB=false,showSR=false,showFibo=false,showST=false,showTrend=false;
+var showMA=true,showBB=false,showSR=true,showFibo=false,showST=true,showTrend=true;
 var priceCache={},fundCache={},sigCache={},vpaCache={};
 var watchlist=JSON.parse(localStorage.getItem('qs_wl')||'["VNM","FPT","VCB","HPG"]');
 var charts={},aiHistory=[],scanResults=[],scanSort='vol_ratio';
