@@ -14,7 +14,7 @@
   --amber:#ff9500;--amber2:#ffb340;--amber3:#cc7700;
   --green:#00cc44;--green2:#00ff55;--red:#ff2244;--red2:#ff4466;
   --blue:#0088ff;--cyan:#00ccff;--purple:#a78bfa;
-  --white:#e8e8e8;--gray1:#888;--gray2:#555;
+  --white:#f0f0f0;--gray1:#bbbbbb;--gray2:#888888;
   --mono:'Roboto Mono',monospace;--tech:'Share Tech Mono',monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -74,7 +74,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 .add-row{padding:7px 10px;border-top:1px solid var(--border);display:flex;gap:4px;}
 .add-inp{flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--amber);font-family:var(--mono);font-size:11px;padding:4px 6px;outline:none;text-transform:uppercase;}
 .add-inp:focus{border-color:var(--amber);}
-.add-inp::placeholder{color:var(--gray2);text-transform:none;font-size:9px;}
+.add-inp::placeholder{color:#777;text-transform:none;font-size:9px;}
 .add-btn{background:var(--amber3);border:none;color:var(--black);font-size:14px;font-weight:700;width:24px;cursor:pointer;}
 .add-btn:hover{background:var(--amber);}
 
@@ -307,7 +307,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 .pf-lbl{font-size:7px;color:var(--gray2);letter-spacing:1px;}
 .pf-inp{background:var(--bg3);border:1px solid var(--border2);color:var(--white);font-family:var(--mono);font-size:11px;padding:5px 8px;outline:none;width:100%;text-transform:uppercase;}
 .pf-inp:focus{border-color:var(--amber);}
-.pf-inp::placeholder{color:var(--gray2);text-transform:none;}
+.pf-inp::placeholder{color:#777;text-transform:none;}
 .pf-add-btn{background:var(--amber3);border:none;color:var(--black);font-family:var(--mono);font-size:9px;font-weight:700;padding:6px 10px;cursor:pointer;letter-spacing:1px;white-space:nowrap;flex-shrink:0;}
 .pf-add-btn:hover{background:var(--amber);}
 .pf-table-wrap{flex-shrink:0;overflow-x:auto;padding:10px 12px;}
@@ -738,7 +738,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
 <div class="moverlay" id="scanModal">
   <div class="modal">
     <div class="mhdr">
-      <div><div class="mtitle">◈ BO LOC CO PHIEU</div></div>
+      <div><div class="mtitle">◈ BO LOC DONG TIEN</div></div>
       <button class="mclose" onclick="closeScan()">✕</button>
     </div>
     <!-- Scan tabs -->
@@ -749,7 +749,7 @@ body{background:var(--black);color:var(--white);font-family:var(--mono);}
     </div>
     <div class="mbody" id="scanBody">
       <div class="scan-start">
-        <div class="scan-start-txt">NHAN SCAN DE QUET ~300 MA</div>
+        <div class="scan-start-txt">LOC DONG TIEN: GIA +2% | VOL > 80% TB10 | VON > 5K</div>
         <button class="scan-start-btn" onclick="startScan()">▶ BAT DAU SCAN</button>
       </div>
     </div>
@@ -825,7 +825,7 @@ var API='/api',curSym=null,allData=[],chartType='candle',period=120,chartMode='v
 var showMA=true,showBB=false,showSR=true,showFibo=false,showST=true,showTrend=true;
 var priceCache={},fundCache={},sigCache={},vpaCache={};
 var watchlist=JSON.parse(localStorage.getItem('qs_wl')||'["VNM","FPT","VCB","HPG"]');
-var charts={},aiHistory=[],scanResults=[],scanSort='above_ma20_pct';
+var charts={},aiHistory=[],scanResults=[],scanSort='vol_ratio';
 
 // VPA Bar Color Map
 var VPC={
@@ -1510,23 +1510,25 @@ async function startScan(){
 
 function renderScan(data){
   var body=document.getElementById('scanBody');
-  var res=scanResults.slice().sort(function(a,b){if(scanSort==='pct')return b.pct-a.pct;if(scanSort==='volume')return b.volume-a.volume;return b.above_ma20_pct-a.above_ma20_pct;});
+  var res=scanResults.slice().sort(function(a,b){if(scanSort==='pct')return b.pct-a.pct;if(scanSort==='volume')return b.volume-a.volume;return b.vol_ratio-a.vol_ratio;});
   var total=data?data.total_scanned:scanResults.length;
   var html='<div class="sctrl"><span class="sinfo">KET QUA: <b>'+res.length+'</b>/'+total+'</span>'
-    +'<button class="ssort'+(scanSort==='above_ma20_pct'?' active':'')+'" onclick="setScanSort(\'above_ma20_pct\')">%VUOT</button>'
+    +'<button class="ssort'+(scanSort==='vol_ratio'?' active':'')+'" onclick="setScanSort(\'vol_ratio\')">VOL/TB</button>'
     +'<button class="ssort'+(scanSort==='pct'?' active':'')+'" onclick="setScanSort(\'pct\')">%NGAY</button>'
     +'<button class="ssort'+(scanSort==='volume'?' active':'')+'" onclick="setScanSort(\'volume\')">VOL</button>'
     +'<button class="srescan" onclick="startScan()">↺ QUET LAI</button></div>';
   if(!res.length){html+='<div style="text-align:center;padding:24px;font-size:11px;color:var(--gray2);">KHONG TIM THAY</div>';}
-  else{html+='<table class="stbl"><thead><tr><th>MA</th><th>GIA</th><th>MA20</th><th>%VUOT</th><th>%NGAY</th><th>MACD</th><th>VOL</th></tr></thead><tbody>';
+  else{html+='<table class="stbl"><thead><tr><th>MA</th><th>GIA</th><th>%NGAY</th><th>VOL/TB10</th><th>VOL</th><th>MA5</th></tr></thead><tbody>';
     res.forEach(function(r){var pc=r.pct>=0?'var(--green)':'var(--red)',ps=r.pct>=0?'+':'',vol=r.volume>=1e6?(r.volume/1e6).toFixed(1)+'M':(r.volume/1e3).toFixed(0)+'K';
+      var vc=r.vol_ratio>=2?'var(--green2)':r.vol_ratio>=1.5?'var(--green)':'var(--amber)';
       html+='<tr onclick="pickScan(\''+r.symbol+'\')">'
-        +'<td class="ssym">'+r.symbol+'</td><td>'+r.close.toLocaleString()+'</td>'
-        +'<td style="color:var(--amber)">'+r.ma20.toLocaleString()+'</td>'
-        +'<td style="color:var(--green2)">+'+r.above_ma20_pct+'%</td>'
+        +'<td class="ssym">'+r.symbol+'</td>'
+        +'<td>'+r.close.toLocaleString()+'</td>'
         +'<td style="color:'+pc+'">'+ps+r.pct+'%</td>'
-        +'<td style="color:var(--cyan)">'+r.macd+'</td>'
-        +'<td style="color:var(--gray1)">'+vol+'</td></tr>';});
+        +'<td style="color:'+vc+';font-weight:700;">'+r.vol_ratio+'x</td>'
+        +'<td style="color:var(--gray1)">'+vol+'</td>'
+        +'<td style="color:var(--amber)">'+r.ma5.toLocaleString()+'</td>'
+        +'</tr>';});
     html+='</tbody></table>';}
   body.innerHTML=html;}
 
