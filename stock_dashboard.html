@@ -1250,6 +1250,25 @@ function renderCharts(){
   });
   candleSeries.setData(candleData);
 
+  // Add Buy/Sell markers (LWC markers API)
+  if(bsArrows.length > 0) {
+    var markers = bsArrows.map(function(s) {
+      var d = sl[s.idx];
+      if(!d) return null;
+      return {
+        time: toTs(d.date),
+        position: s.type==='BUY' ? 'belowBar' : 'aboveBar',
+        color: s.type==='BUY' ? '#00ff55' : '#ff2244',
+        shape: s.type==='BUY' ? 'arrowUp' : 'arrowDown',
+        text: s.type==='BUY' ? 'B@'+s.price.toLocaleString() : 'S@'+s.price.toLocaleString(),
+        size: 1.5,
+      };
+    }).filter(Boolean);
+    // Sort by time required by LWC
+    markers.sort(function(a,b){return a.time-b.time;});
+    candleSeries.setMarkers(markers);
+  }
+
   // MA20 — luôn bật mặc định
   var ma20Series = lwcChart.addLineSeries({color:'#00cc44',lineWidth:1.5,priceLineVisible:false,lastValueVisible:false});
   ma20Series.setData(ma20.map(function(v,i){return v?{time:toTs(sl[i].date),value:v}:null;}).filter(Boolean));
